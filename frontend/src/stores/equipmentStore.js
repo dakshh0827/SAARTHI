@@ -65,29 +65,33 @@ export const useEquipmentStore = create((set, get) => ({
   },
 
   // Create new equipment
-  createEquipment: async (data) => {
-    set({ isLoading: true, error: null });
-    try {
-      const response = await api.post("/equipment", data);
-      
-      // Add to local state
-      set((state) => ({
-        equipment: [response.data.data, ...state.equipment],
-        isLoading: false,
-      }));
-      
-      return response.data;
-    } catch (error) {
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.errors?.[0]?.msg ||
-                          "Failed to create equipment";
-      set({ 
-        error: errorMessage,
-        isLoading: false 
-      });
-      throw new Error(errorMessage);
-    }
-  },
+createEquipment: async (data) => {
+  // Prevent multiple simultaneous calls
+  if (get().isLoading) return;
+  
+  set({ isLoading: true, error: null });
+  try {
+    const response = await api.post("/equipment", data);
+    
+    // Add to local state
+    set((state) => ({
+      equipment: [response.data.data, ...state.equipment],
+      isLoading: false,
+    }));
+    
+    return response.data;
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || 
+                        error.response?.data?.errors?.[0]?.msg ||
+                        "Failed to create equipment";
+    set({ 
+      error: errorMessage,
+      isLoading: false 
+    });
+    throw new Error(errorMessage);
+  }
+},
+
 
   // Update equipment
   updateEquipment: async (id, data) => {

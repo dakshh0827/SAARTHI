@@ -1,23 +1,56 @@
-import { useEffect, useState } from "react";
-import { useDashboardStore } from "../../stores/dashboardStore";
-import { useEquipmentStore } from "../../stores/equipmentStore";
-import { useAlertStore } from "../../stores/alertStore";
-import { useAuthStore } from "../../stores/authStore";
-import StatCard from "../../components/common/StatCard";
-import EquipmentTable from "../../components/dashboard/EquipmentTable";
-import AlertsList from "../../components/dashboard/AlertsList";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import EquipmentFormModal from "../../components/equipment/EquipmentFormModal";
-import {
-  Activity,
-  AlertTriangle,
-  Wrench,
-  TrendingUp,
-  Building,
-  Plus,
-  Filter,
-  Download,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { X } from "lucide-react";
+import LoadingSpinner from "../common/LoadingSpinner";
+
+// Department to equipment name mapping
+const DEPARTMENT_EQUIPMENT_NAMES = {
+  FITTER_MANUFACTURING: [
+    { value: "BENCH_DRILLING_MACHINE", label: "Bench Drilling Machine" },
+    { value: "ANGLE_GRINDER_PORTABLE", label: "Angle Grinder (Portable)" },
+    { value: "MANUAL_ARC_WELDING_MACHINE", label: "Manual Arc Welding Machine" },
+    { value: "GAS_WELDING_KIT", label: "Gas Welding Kit" },
+    { value: "MIG_CO2_WELDING_MACHINE", label: "MIG/CO2 Welding Machine" },
+  ],
+  ELECTRICAL_ENGINEERING: [
+    { value: "ELECTRICIAN_TRAINING_PANEL", label: "Electrician Training Panel" },
+    { value: "ADVANCED_ELECTRICIAN_SETUP_PLC_VFD", label: "Advanced Electrician Setup (PLC/VFD)" },
+    { value: "BENCH_DRILLING_MACHINE", label: "Bench Drilling Machine" },
+  ],
+  WELDING_FABRICATION: [
+    { value: "ARC_WELDING_MACHINE_200_300A", label: "Arc Welding Machine (200-300A)" },
+    { value: "GAS_WELDING_KIT_OXY_ACETYLENE", label: "Gas Welding Kit (Oxy-Acetylene)" },
+    { value: "MIG_CO2_WELDING_MACHINE_250_400A", label: "MIG/CO2 Welding Machine (250-400A)" },
+    { value: "VR_AR_WELDING_SIMULATOR", label: "VR/AR Welding Simulator" },
+  ],
+  TOOL_DIE_MAKING: [
+    { value: "TOOL_DIE_EQUIPMENT_EDM_JIG_BORING", label: "Tool & Die Equipment (EDM/Jig Boring)" },
+    { value: "PLANER_MACHINE", label: "Planer Machine" },
+    { value: "GEAR_HOBBING_SHAPING_MACHINE", label: "Gear Hobbing/Shaping Machine" },
+  ],
+  ADDITIVE_MANUFACTURING: [
+    { value: "THREE_D_PRINTER_FDM_RESIN", label: "3D Printer (FDM/Resin)" },
+    { value: "LASER_ENGRAVING_CUTTING_MACHINE", label: "Laser Engraving/Cutting Machine" },
+  ],
+  SOLAR_INSTALLER_PV: [
+    { value: "INVERTER_TRAINING_UNIT", label: "Inverter Training Unit" },
+    { value: "DRILLING_MACHINE_AND_TOOLS", label: "Drilling Machine and Tools" },
+  ],
+  MATERIAL_TESTING_QUALITY: [
+    { value: "TENSILE_TESTING_MACHINE", label: "Tensile Testing Machine" },
+    { value: "COMPRESSION_TESTING_MACHINE", label: "Compression Testing Machine" },
+    { value: "IMPACT_TESTING_MACHINE_CHARPY_IZOD", label: "Impact Testing Machine (Charpy/Izod)" },
+    { value: "HARDNESS_TESTER_ROCKWELL_BRINELL_VICKERS", label: "Hardness Tester (Rockwell/Brinell/Vickers)" },
+    { value: "OPTICAL_COMPARATOR", label: "Optical Comparator" },
+    { value: "ENVIRONMENTAL_CHAMBER", label: "Environmental Chamber" },
+  ],
+  ADVANCED_MANUFACTURING_CNC: [
+    { value: "CNC_VERTICAL_MACHINING_CENTER_3_4_AXIS", label: "CNC Vertical Machining Center (3/4 Axis)" },
+    { value: "CNC_LATHE_2_AXIS", label: "CNC Lathe (2 Axis)" },
+  ],
+  AUTOMOTIVE_MECHANIC: [
+    { value: "MOTOR_VEHICLE_TRAINING_MODEL", label: "Motor Vehicle Training Model" },
+  ],
+};
 
 const DEPARTMENT_DISPLAY_NAMES = {
   FITTER_MANUFACTURING: "Fitter/Manufacturing",
@@ -31,435 +64,430 @@ const DEPARTMENT_DISPLAY_NAMES = {
   AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
 };
 
-export default function LabManagerDashboard() {
-  const { user } = useAuthStore();
-  const {
-    overview,
-    fetchOverview,
-    isLoading: dashboardLoading,
-  } = useDashboardStore();
-  const { 
-    equipment, 
-    fetchEquipment, 
-    createEquipment, 
-    updateEquipment,
-    deleteEquipment,
-    isLoading: equipmentLoading 
-  } = useEquipmentStore();
-  const { alerts, fetchAlerts, resolveAlert } = useAlertStore();
-  
-  const [selectedLab, setSelectedLab] = useState("all");
-  const [selectedStatus, setSelectedStatus] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [equipmentByLab, setEquipmentByLab] = useState({});
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingEquipment, setEditingEquipment] = useState(null);
+export default function EquipmentFormModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  equipment = null,
+  userDepartment,
+  userInstitute,
+  userRole, // Add userRole prop
+}) {
+  const isEditing = !!equipment;
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [availableLabs, setAvailableLabs] = useState([]);
+
+  // For LAB_MANAGER, department is locked to their department
+  // For POLICY_MAKER, they can select any department
+  const isPolicyMaker = userRole === "POLICY_MAKER";
+
+  const [formData, setFormData] = useState({
+    equipmentId: "",
+    name: "",
+    department: isPolicyMaker ? "" : (userDepartment || ""), // Lock department for Lab Managers
+    equipmentName: "",
+    labId: "",
+    manufacturer: "",
+    model: "",
+    serialNumber: "",
+    purchaseDate: "",
+    warrantyExpiry: "",
+    specifications: "",
+    imageUrl: "",
+  });
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (equipment) {
+      // Get the equipment-specific name field
+      const departmentField = getDepartmentFieldName(equipment.department);
+      const equipmentName = equipment[departmentField] || "";
 
-  useEffect(() => {
-    // Group equipment by lab
-    if (equipment.length > 0) {
-      const grouped = equipment.reduce((acc, eq) => {
-        const labName = eq.lab?.name || "Unknown Lab";
-        if (!acc[labName]) acc[labName] = [];
-        acc[labName].push(eq);
-        return acc;
-      }, {});
-      setEquipmentByLab(grouped);
+      setFormData({
+        equipmentId: equipment.equipmentId || "",
+        name: equipment.name || "",
+        department: equipment.department || "",
+        equipmentName: equipmentName,
+        labId: equipment.lab?.labId || "",
+        manufacturer: equipment.manufacturer || "",
+        model: equipment.model || "",
+        serialNumber: equipment.serialNumber || "",
+        purchaseDate: equipment.purchaseDate 
+          ? new Date(equipment.purchaseDate).toISOString().split("T")[0]
+          : "",
+        warrantyExpiry: equipment.warrantyExpiry
+          ? new Date(equipment.warrantyExpiry).toISOString().split("T")[0]
+          : "",
+        specifications: equipment.specifications 
+          ? JSON.stringify(equipment.specifications, null, 2)
+          : "",
+        imageUrl: equipment.imageUrl || "",
+      });
     }
   }, [equipment]);
 
-  const loadDashboardData = async () => {
+  useEffect(() => {
+    // Fetch labs for the user's institute and department
+    fetchLabs();
+  }, [userInstitute, userDepartment]);
+
+  const getDepartmentFieldName = (department) => {
+    const fieldMap = {
+      FITTER_MANUFACTURING: 'fitterEquipmentName',
+      ELECTRICAL_ENGINEERING: 'electricalEquipmentName',
+      WELDING_FABRICATION: 'weldingEquipmentName',
+      TOOL_DIE_MAKING: 'toolDieEquipmentName',
+      ADDITIVE_MANUFACTURING: 'additiveManufacturingEquipmentName',
+      SOLAR_INSTALLER_PV: 'solarInstallerEquipmentName',
+      MATERIAL_TESTING_QUALITY: 'materialTestingEquipmentName',
+      ADVANCED_MANUFACTURING_CNC: 'advancedManufacturingEquipmentName',
+      AUTOMOTIVE_MECHANIC: 'automotiveEquipmentName',
+    };
+    return fieldMap[department] || '';
+  };
+
+  const fetchLabs = async () => {
     try {
-      await Promise.all([
-        fetchOverview(),
-        fetchEquipment(), // Backend auto-filters by institute & department
-        fetchAlerts({ isResolved: false }),
-      ]);
-    } catch (error) {
-      console.error("Failed to load dashboard data:", error);
-    }
-  };
-
-  const handleCreateEquipment = async (data) => {
-    try {
-      await createEquipment(data);
-      setIsModalOpen(false);
-      await loadDashboardData();
-    } catch (error) {
-      console.error("Failed to create equipment:", error);
-      throw error;
-    }
-  };
-
-  const handleUpdateEquipment = async (id, data) => {
-    try {
-      await updateEquipment(id, data);
-      setIsModalOpen(false);
-      setEditingEquipment(null);
-      await loadDashboardData();
-    } catch (error) {
-      console.error("Failed to update equipment:", error);
-      throw error;
-    }
-  };
-
-  const handleDeleteEquipment = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this equipment?")) {
-      return;
-    }
-    
-    try {
-      await deleteEquipment(id);
-      await loadDashboardData();
-    } catch (error) {
-      console.error("Failed to delete equipment:", error);
-      alert("Failed to delete equipment. Please try again.");
-    }
-  };
-
-  const handleEditClick = (equipment) => {
-    setEditingEquipment(equipment);
-    setIsModalOpen(true);
-  };
-
-  const handleModalClose = () => {
-    setIsModalOpen(false);
-    setEditingEquipment(null);
-  };
-
-  const handleExportData = () => {
-    // Export filtered equipment as CSV
-    const filteredData = getFilteredEquipment();
-    const csv = convertToCSV(filteredData);
-    downloadCSV(csv, `equipment-${new Date().toISOString().split('T')[0]}.csv`);
-  };
-
-  const convertToCSV = (data) => {
-    if (!data.length) return "";
-    
-    const headers = [
-      "Equipment ID",
-      "Name",
-      "Department",
-      "Lab",
-      "Status",
-      "Manufacturer",
-      "Model",
-      "Purchase Date",
-    ];
-    
-    const rows = data.map(eq => [
-      eq.equipmentId,
-      eq.name,
-      eq.department,
-      eq.lab?.name || "",
-      eq.status?.status || "",
-      eq.manufacturer,
-      eq.model,
-      new Date(eq.purchaseDate).toLocaleDateString(),
-    ]);
-    
-    return [headers, ...rows].map(row => row.join(",")).join("\n");
-  };
-
-  const downloadCSV = (csv, filename) => {
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const getFilteredEquipment = () => {
-    let filtered = equipment;
-
-    // Filter by lab
-    if (selectedLab !== "all") {
-      filtered = filtered.filter(eq => eq.lab?.name === selectedLab);
-    }
-
-    // Filter by status
-    if (selectedStatus !== "all") {
-      filtered = filtered.filter(eq => eq.status?.status === selectedStatus);
-    }
-
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(eq =>
-        eq.name.toLowerCase().includes(query) ||
-        eq.equipmentId.toLowerCase().includes(query) ||
-        eq.manufacturer.toLowerCase().includes(query) ||
-        eq.model.toLowerCase().includes(query)
+      const response = await fetch(
+        `/api/labs?institute=${userInstitute}&department=${userDepartment}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
       );
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableLabs(data.data || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch labs:", error);
     }
-
-    return filtered;
   };
 
-  if (dashboardLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    setError("");
+  };
 
-  const stats = [
-    {
-      icon: Activity,
-      title: "Total Equipment",
-      value: overview?.overview?.totalEquipment || 0,
-      color: "blue",
-    },
-    {
-      icon: TrendingUp,
-      title: "Active Equipment",
-      value: overview?.overview?.activeEquipment || 0,
-      color: "green",
-    },
-    {
-      icon: AlertTriangle,
-      title: "Unresolved Alerts",
-      value: overview?.overview?.unresolvedAlerts || 0,
-      color: "red",
-    },
-    {
-      icon: Wrench,
-      title: "Maintenance Due",
-      value: overview?.overview?.maintenanceDue || 0,
-      color: "yellow",
-    },
-  ];
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
 
-  const filteredEquipment = getFilteredEquipment();
+    try {
+      // Validate required fields
+      const requiredFields = [
+        "equipmentId",
+        "name",
+        "department",
+        "labId",
+        "manufacturer",
+        "model",
+        "purchaseDate",
+      ];
+
+      for (const field of requiredFields) {
+        if (!formData[field]) {
+          throw new Error(`${field} is required`);
+        }
+      }
+
+      // Parse specifications if provided
+      let specifications = null;
+      if (formData.specifications) {
+        try {
+          specifications = JSON.parse(formData.specifications);
+        } catch (err) {
+          throw new Error("Invalid JSON in specifications field");
+        }
+      }
+
+      const submitData = {
+        ...formData,
+        specifications,
+        // Remove empty fields
+        serialNumber: formData.serialNumber || undefined,
+        warrantyExpiry: formData.warrantyExpiry || undefined,
+        imageUrl: formData.imageUrl || undefined,
+        equipmentName: formData.equipmentName || undefined,
+      };
+
+      if (isEditing) {
+        await onSubmit(equipment.id, submitData);
+      } else {
+        await onSubmit(submitData);
+      }
+    } catch (err) {
+      setError(err.message || "Failed to save equipment");
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const availableEquipmentNames = DEPARTMENT_EQUIPMENT_NAMES[formData.department] || [];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Lab Manager Dashboard
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {user?.institute} | {DEPARTMENT_DISPLAY_NAMES[user?.department] || user?.department}
-          </p>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {isEditing ? "Edit Equipment" : "Add New Equipment"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Add Equipment
-        </button>
-      </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, index) => (
-          <StatCard key={index} {...stat} />
-        ))}
-      </div>
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {error}
+            </div>
+          )}
 
-      {/* Filters Section */}
-      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-900">Filters</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Search */}
+          {/* Equipment ID */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search
+              Equipment ID <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search equipment..."
+              name="equipmentId"
+              value={formData.equipmentId}
+              onChange={handleChange}
+              disabled={isEditing}
+              placeholder="e.g., EQ-EE-001"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Unique identifier for this equipment
+            </p>
+          </div>
+
+          {/* Equipment Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Equipment Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="e.g., CNC Machine Model X"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
             />
           </div>
 
-          {/* Lab Filter */}
+          {/* Department */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lab
+              Department <span className="text-red-500">*</span>
             </label>
             <select
-              value={selectedLab}
-              onChange={(e) => setSelectedLab(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              name="department"
+              value={formData.department}
+              onChange={handleChange}
+              disabled={isEditing}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+              required
             >
-              <option value="all">All Labs</option>
-              {Object.keys(equipmentByLab).map((labName) => (
-                <option key={labName} value={labName}>
-                  {labName} ({equipmentByLab[labName].length})
+              <option value="">Select Department</option>
+              {Object.entries(DEPARTMENT_DISPLAY_NAMES).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Status Filter */}
+          {/* Equipment Type (Department-specific) */}
+          {availableEquipmentNames.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Equipment Type
+              </label>
+              <select
+                name="equipmentName"
+                value={formData.equipmentName}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Type (Optional)</option>
+                {availableEquipmentNames.map((eq) => (
+                  <option key={eq.value} value={eq.value}>
+                    {eq.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Lab */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Status
+              Lab <span className="text-red-500">*</span>
             </label>
             <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
+              name="labId"
+              value={formData.labId}
+              onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
             >
-              <option value="all">All Status</option>
-              <option value="OPERATIONAL">Operational</option>
-              <option value="IN_USE">In Use</option>
-              <option value="IN_CLASS">In Class</option>
-              <option value="IDLE">Idle</option>
-              <option value="MAINTENANCE">Maintenance</option>
-              <option value="FAULTY">Faulty</option>
-              <option value="OFFLINE">Offline</option>
-              <option value="WARNING">Warning</option>
+              <option value="">Select Lab</option>
+              {availableLabs.map((lab) => (
+                <option key={lab.labId} value={lab.labId}>
+                  {lab.name} ({lab.labId})
+                </option>
+              ))}
             </select>
           </div>
-        </div>
 
-        {/* Results count and export */}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Showing {filteredEquipment.length} of {equipment.length} equipment
-          </p>
-          <button
-            onClick={handleExportData}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
-        </div>
+          {/* Manufacturer & Model */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Manufacturer <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="manufacturer"
+                value={formData.manufacturer}
+                onChange={handleChange}
+                placeholder="e.g., Siemens"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Model <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="model"
+                value={formData.model}
+                onChange={handleChange}
+                placeholder="e.g., S7-1200"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Serial Number */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Serial Number
+            </label>
+            <input
+              type="text"
+              name="serialNumber"
+              value={formData.serialNumber}
+              onChange={handleChange}
+              placeholder="e.g., SN123456789"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Purchase Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                name="purchaseDate"
+                value={formData.purchaseDate}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Warranty Expiry
+              </label>
+              <input
+                type="date"
+                name="warrantyExpiry"
+                value={formData.warrantyExpiry}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          {/* Image URL */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Image URL
+            </label>
+            <input
+              type="url"
+              name="imageUrl"
+              value={formData.imageUrl}
+              onChange={handleChange}
+              placeholder="https://example.com/image.jpg"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Specifications (JSON) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Specifications (JSON)
+            </label>
+            <textarea
+              name="specifications"
+              value={formData.specifications}
+              onChange={handleChange}
+              rows={4}
+              placeholder='{"power": "5kW", "voltage": "380V"}'
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter specifications in JSON format
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              disabled={isLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading}
+            >
+              {isLoading && <LoadingSpinner size="sm" />}
+              {isEditing ? "Update Equipment" : "Add Equipment"}
+            </button>
+          </div>
+        </form>
       </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Equipment Table */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Equipment Management</h2>
-              {selectedLab !== "all" && (
-                <p className="text-sm text-gray-600 mt-1">
-                  Filtered by: {selectedLab}
-                </p>
-              )}
-            </div>
-            <div className="p-4">
-              {equipmentLoading ? (
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner />
-                </div>
-              ) : filteredEquipment.length === 0 ? (
-                <div className="text-center py-12">
-                  <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600">No equipment found</p>
-                  <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    Add your first equipment
-                  </button>
-                </div>
-              ) : (
-                <EquipmentTable
-                  equipment={filteredEquipment}
-                  onEdit={handleEditClick}
-                  onDelete={handleDeleteEquipment}
-                  showActions={true}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Alerts */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold">Recent Alerts</h2>
-            </div>
-            <div className="p-4">
-              {alerts.length === 0 ? (
-                <div className="text-center py-8">
-                  <AlertTriangle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">No active alerts</p>
-                </div>
-              ) : (
-                <AlertsList
-                  alerts={alerts.slice(0, 5)}
-                  onResolve={resolveAlert}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Equipment by Lab Summary */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="font-semibold">Equipment by Lab</h3>
-            </div>
-            <div className="p-4">
-              {Object.keys(equipmentByLab).length === 0 ? (
-                <p className="text-sm text-gray-600 text-center py-4">
-                  No labs with equipment
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {Object.entries(equipmentByLab).map(([labName, items]) => (
-                    <div
-                      key={labName}
-                      className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                      onClick={() => setSelectedLab(labName)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4 text-gray-600" />
-                          <h4 className="font-medium text-gray-900 text-sm">
-                            {labName}
-                          </h4>
-                        </div>
-                        <span className="text-lg font-bold text-blue-600">
-                          {items.length}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Equipment Form Modal */}
-      {isModalOpen && (
-        <EquipmentFormModal
-          isOpen={isModalOpen}
-          onClose={handleModalClose}
-          onSubmit={editingEquipment ? handleUpdateEquipment : handleCreateEquipment}
-          equipment={editingEquipment}
-          userDepartment={user?.department}
-          userInstitute={user?.institute}
-          userRole={user?.role} // Pass user role
-        />
-      )}
     </div>
   );
 }

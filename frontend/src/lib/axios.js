@@ -24,9 +24,10 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Request interceptor
+// Request interceptor - Access store INSIDE the callback, not during module load
 api.interceptors.request.use(
   (config) => {
+    // Only access the store when the request is actually made
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
