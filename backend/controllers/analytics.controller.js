@@ -1,5 +1,5 @@
-import prisma from '../config/database.js';
-import { filterDataByRole } from '../middlewares/rbac.js';
+import prisma from "../config/database.js";
+import { filterDataByRole } from "../middlewares/rbac.js";
 
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -17,7 +17,11 @@ class AnalyticsController {
         date: { gte: thirtyDaysAgo },
       },
       _avg: { utilizationRate: true, efficiency: true },
-      _sum: { totalUsageHours: true, totalDowntime: true, energyConsumed: true },
+      _sum: {
+        totalUsageHours: true,
+        totalDowntime: true,
+        energyConsumed: true,
+      },
     });
 
     const data = {
@@ -33,17 +37,20 @@ class AnalyticsController {
   // Get equipment-specific analytics
   getEquipmentAnalytics = asyncHandler(async (req, res) => {
     const { days = 30 } = req.query;
-    const { id } = req.params; // This is the equipment's internal ID
+    const { id } = req.params; // Equipment internal ID
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    // We must verify the user has access to this equipment
+    // Verify access
     const roleFilter = filterDataByRole(req);
     const equipment = await prisma.equipment.findFirst({
-        where: { id, ...roleFilter }
+      where: { id, ...roleFilter },
     });
 
     if (!equipment) {
-        return res.status(404).json({ success: false, message: "Equipment not found or access denied."});
+      return res.status(404).json({
+        success: false,
+        message: "Equipment not found or access denied.",
+      });
     }
 
     const data = await prisma.usageAnalytics.findMany({
@@ -51,9 +58,34 @@ class AnalyticsController {
         equipmentId: id,
         date: { gte: startDate },
       },
-      orderBy: { date: 'asc' },
+      orderBy: { date: "asc" },
     });
+
     res.json({ success: true, data });
+  });
+
+  // Get department-specific analytics for an equipment
+  getDepartmentAnalytics = asyncHandler(async (req, res) => {
+    const { id } = req.params; // Equipment internal ID
+
+    // Verify access
+    const roleFilter = filterDataByRole(req);
+    const equipment = await prisma.equipment.findFirst({
+      where: { id, ...roleFilter },
+      include: { analyticsParams: true },
+    });
+
+    if (!equipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Equipment not found or access denied.",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: equipment.analyticsParams,
+    });
   });
 }
 

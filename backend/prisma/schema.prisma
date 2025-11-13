@@ -10,7 +10,7 @@ datasource db {
   url      = "mongodb+srv://dakshthakran05_db_user:XNuoDz8HxynA0iYG@cluster0.9awo5nj.mongodb.net/SIH_Finals?appName=Cluster0"
 }
 
-// User model - FIXED: Removed @unique from googleId and githubId
+// ==================== USER MODEL ====================
 model User {
   id              String       @id @default(auto()) @map("_id") @db.ObjectId
   email           String       @unique
@@ -19,14 +19,15 @@ model User {
   lastName        String
   role            UserRole     @default(TRAINER)
   phone           String?
-  institute       String?
+  department      Department?  // Department assigned to LAB_MANAGER
+  institute       String?      // Institute for LAB_MANAGER and POLICY_MAKER
   labId           String?      @db.ObjectId
   lab             Lab?         @relation(fields: [labId], references: [id], onDelete: SetNull)
   isActive        Boolean      @default(true)
   emailVerified   Boolean      @default(false)
   authProvider    AuthProvider @default(CREDENTIAL)
-  googleId        String?      // REMOVED @unique
-  githubId        String?      // REMOVED @unique
+  googleId        String?
+  githubId        String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -34,33 +35,37 @@ model User {
   notifications     Notification[]
   maintenanceLogs   MaintenanceLog[]
   reports           Report[]
-  chatMessages    ChatMessage[]
+  chatMessages      ChatMessage[]
 
   @@index([institute])
+  @@index([department])
   @@index([labId])
-  @@index([googleId]) // Added regular index for faster lookups
-  @@index([githubId]) // Added regular index for faster lookups
+  @@index([googleId])
+  @@index([githubId])
   @@map("users")
 }
 
-// Lab model
+// ==================== LAB MODEL ====================
 model Lab {
-  id        String @id @default(auto()) @map("_id") @db.ObjectId
-  labId     String @unique
-  name      String
-  institute String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  labId      String     @unique // Public lab ID (e.g., "LAB-MECH-001")
+  name       String
+  institute  String
+  department Department // Department this lab belongs to
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
   // Relations
   equipments Equipment[]
   trainers   User[]
 
   @@index([institute])
+  @@index([department])
+  @@index([institute, department])
   @@map("labs")
 }
 
-// OTP Model
+// ==================== OTP MODEL ====================
 model OTP {
   id        String     @id @default(auto()) @map("_id") @db.ObjectId
   email     String
@@ -75,6 +80,7 @@ model OTP {
   @@map("otps")
 }
 
+// ==================== ENUMS ====================
 enum AuthProvider {
   CREDENTIAL
   GOOGLE
@@ -87,473 +93,203 @@ enum OTPPurpose {
 }
 
 enum UserRole {
-  POLICY_MAKER
-  LAB_TECHNICIAN
-  TRAINER
+  POLICY_MAKER   // Can manage labs, view all data across institutes
+  LAB_MANAGER    // Manages equipment in specific department/institute, cannot create/delete labs
+  TRAINER        // Views equipment in their specific lab
 }
 
+// ==================== DEPARTMENT ENUM (9 Departments) ====================
 enum Department {
-  MECHANICAL_ENGINEERING
   FITTER_MANUFACTURING
   ELECTRICAL_ENGINEERING
-  ELECTRONICS_COMMUNICATION
-  AUTOMOTIVE_MECHANIC
   WELDING_FABRICATION
-  REFRIGERATION_AC
-  CARPENTRY_WOODWORKING
-  PLUMBING
-  ADVANCED_MANUFACTURING_CNC
   TOOL_DIE_MAKING
   ADDITIVE_MANUFACTURING
   SOLAR_INSTALLER_PV
-  HOSPITALITY_KITCHEN
-  HOSPITALITY_FRONT_OFFICE
-  HOSPITALITY_HOUSEKEEPING
-  SECURITY_SERVICES
-  IT_COMPUTER_LAB
-  TEXTILE_SEWING
   MATERIAL_TESTING_QUALITY
-  OTHER
+  ADVANCED_MANUFACTURING_CNC
+  AUTOMOTIVE_MECHANIC
 }
 
-// ==================== MECHANICAL ENGINEERING ====================
-enum MechanicalMachineCategory {
-  TURNING_AND_MACHINING
-  CUTTING_AND_SHAPING
-  BASIC_SHOP_TOOLS
-  OTHER
-}
+// ==================== EQUIPMENT ENUMS BY DEPARTMENT ====================
 
-enum MechanicalEquipmentName {
-  CENTRE_LATHE
-  HORIZONTAL_MILLING_MACHINE
-  SURFACE_GRINDER
-  POWER_HACKSAW
-  SHAPING_MACHINE
-  SLOTTING_MACHINE
-  PEDESTAL_GRINDER
-  BENCH_VISE
-  HAND_TOOL_KIT
-  OTHER
-}
-
-// ==================== FITTER/MANUFACTURING ====================
-enum FitterMachineCategory {
-  GENERAL_MACHINE_TOOLS
-  WELDING_AND_JOINING
-  OTHER
-}
-
+// Fitter/Manufacturing Equipment
 enum FitterEquipmentName {
   BENCH_DRILLING_MACHINE
   ANGLE_GRINDER_PORTABLE
-  FILING_SHAPING_TOOLS
   MANUAL_ARC_WELDING_MACHINE
   GAS_WELDING_KIT
   MIG_CO2_WELDING_MACHINE
-  OTHER
 }
 
-// ==================== ELECTRICAL ENGINEERING ====================
-enum ElectricalMachineCategory {
-  ELECTRICAL_TRAINERS
-  POWER_MACHINES
-  SAFETY_AND_MAINTENANCE
-  ADVANCED_ELECTRICAL
-  OTHER
-}
-
+// Electrical Engineering Equipment
 enum ElectricalEquipmentName {
   ELECTRICIAN_TRAINING_PANEL
-  MULTIMETERS_AND_OSCILLOSCOPES
-  BENCH_DRILLING_MACHINE
-  CURRENT_INSULATION_VOLTAGE_TESTERS
   ADVANCED_ELECTRICIAN_SETUP_PLC_VFD
-  OTHER
+  BENCH_DRILLING_MACHINE
 }
 
-// ==================== ELECTRONICS & COMMUNICATION ====================
-enum ElectronicsMachineCategory {
-  ELECTRONICS_TESTING
-  ADVANCED_ELECTRONICS
-  IOT_AND_DATA_LOGGING
-  OTHER
-}
-
-enum ElectronicsEquipmentName {
-  ELECTRONICS_MECHANIC_TESTING_KIT
-  FUNCTION_GENERATOR_POWER_SUPPLY_CRO
-  ADVANCED_ELECTRONICS_TRAINER_MICROPROC
-  IOT_SENSOR_DATA_LOGGER_KIT
-  OTHER
-}
-
-// ==================== AUTOMOTIVE/MECHANIC ====================
-enum AutomotiveMachineCategory {
-  ENGINE_MODELS_AND_TRAINING
-  REPAIR_AND_SERVICE
-  OTHER
-}
-
-enum AutomotiveEquipmentName {
-  MOTOR_VEHICLE_TRAINING_MODEL
-  SECTIONED_VEHICLE_MODELS
-  SERVICE_TOOLKITS_AND_DIAGNOSTIC_KITS
-  OTHER
-}
-
-// ==================== WELDING & FABRICATION ====================
-enum WeldingMachineCategory {
-  MANUAL_WELDING
-  SEMI_AUTOMATIC_WELDING
-  PRECISION_WELDING
-  WELDING_SIMULATION
-  OTHER
-}
-
+// Welding & Fabrication Equipment
 enum WeldingEquipmentName {
   ARC_WELDING_MACHINE_200_300A
   GAS_WELDING_KIT_OXY_ACETYLENE
   MIG_CO2_WELDING_MACHINE_250_400A
-  TIG_WELDING_MACHINE_200_300A
   VR_AR_WELDING_SIMULATOR
-  OTHER
 }
 
-// ==================== REFRIGERATION & AC ====================
-enum RefrigerationACMachineCategory {
-  CORE_EQUIPMENT
-  TESTING_AND_SERVICE
-  OTHER
-}
-
-enum RefrigerationACEquipmentName {
-  REFRIGERATION_TRAINING_UNIT_1_2_TON
-  MANIFOLD_GAUGE_SETS_AND_VACUUM_PUMPS
-  PRESSURE_GAUGES_AND_LEAK_DETECTORS
-  OTHER
-}
-
-// ==================== CARPENTRY/WOODWORKING ====================
-enum CarpentryMachineCategory {
-  WOODWORKING_MACHINES
-  OTHER
-}
-
-enum CarpentryEquipmentName {
-  CARPENTER_POWER_TOOLS
-  CIRCULAR_SAW
-  BAND_SAW
-  THICKNESS_PLANER
-  WOOD_LATHE
-  OTHER
-}
-
-// ==================== PLUMBING ====================
-enum PlumbingMachineCategory {
-  PIPEWORK_EQUIPMENT
-  OTHER
-}
-
-enum PlumbingEquipmentName {
-  MANUAL_PIPE_BENDER
-  PIPE_CUTTING_AND_THREADING_TOOLS
-  GAS_WELDING_KIT
-  OTHER
-}
-
-// ==================== ADVANCED MANUFACTURING/CNC ====================
-enum AdvancedManufacturingMachineCategory {
-  CNC_MACHINING
-  CAD_CAM_AND_PROGRAMMING
-  QUALITY_CONTROL
-  OTHER
-}
-
-enum AdvancedManufacturingEquipmentName {
-  CNC_LATHE_2_AXIS
-  CNC_VERTICAL_MACHINING_CENTER_3_4_AXIS
-  CAD_CAM_WORKSTATION
-  COORDINATE_MEASURING_MACHINE_CMM
-  OTHER
-}
-
-// ==================== TOOL & DIE MAKING ====================
-enum ToolDieMakingMachineCategory {
-  TOOL_MAKING
-  ADVANCED_MACHINING
-  GEAR_MANUFACTURING
-  OTHER
-}
-
-enum ToolDieMakingEquipmentName {
+// Tool & Die Making Equipment
+enum ToolDieEquipmentName {
   TOOL_DIE_EQUIPMENT_EDM_JIG_BORING
   PLANER_MACHINE
   GEAR_HOBBING_SHAPING_MACHINE
-  OTHER
 }
 
-// ==================== ADDITIVE MANUFACTURING ====================
-enum AdditiveManufacturingMachineCategory {
-  THREE_D_MANUFACTURING
-  LASER_TECHNOLOGY
-  OTHER
-}
-
+// Additive Manufacturing Equipment
 enum AdditiveManufacturingEquipmentName {
   THREE_D_PRINTER_FDM_RESIN
   LASER_ENGRAVING_CUTTING_MACHINE
-  OTHER
 }
 
-// ==================== SOLAR INSTALLER (PV) ====================
-enum SolarInstallerMachineCategory {
-  SOLAR_PANEL_INSTALLATION
-  INVERTER_AND_BATTERY_SYSTEMS
-  INSTALLATION_AND_MAINTENANCE
-  OTHER
-}
-
+// Solar Installer (PV) Equipment
 enum SolarInstallerEquipmentName {
-  SOLAR_PANEL_TEST_KIT
-  MULTIMETER_AND_CLAMP_METER
   INVERTER_TRAINING_UNIT
-  BATTERY_TESTING_EQUIPMENT
   DRILLING_MACHINE_AND_TOOLS
-  OTHER
 }
 
-// ==================== HOSPITALITY - KITCHEN ====================
-enum HospitalityKitchenMachineCategory {
-  COOKING_EQUIPMENT
-  FOOD_PROCESSING
-  REFRIGERATION
-  DISHWASHING
-  OTHER
-}
-
-enum HospitalityKitchenEquipmentName {
-  COMMERCIAL_OVEN
-  INDUSTRIAL_STOVE_RANGE
-  MICROWAVE_OVEN
-  MIXER_BLENDER
-  FOOD_SLICER_CUTTER
-  MEAT_GRINDER
-  COMMERCIAL_REFRIGERATOR_FREEZER
-  COMMERCIAL_DISHWASHER
-  OTHER
-}
-
-// ==================== HOSPITALITY - FRONT OFFICE ====================
-enum HospitalityFrontOfficeMachineCategory {
-  COMMUNICATION_SYSTEMS
-  GUEST_MANAGEMENT
-  OTHER
-}
-
-enum HospitalityFrontOfficeEquipmentName {
-  PBX_TELEPHONE_SYSTEM
-  DOOR_LOCK_ACCESS_CONTROL_SYSTEM
-  PROPERTY_MANAGEMENT_SYSTEM_PMS_PC
-  PRINTER_AND_COPIER_MACHINE
-  OTHER
-}
-
-// ==================== HOSPITALITY - HOUSEKEEPING ====================
-enum HospitalityHousekeepingMachineCategory {
-  CLEANING_EQUIPMENT
-  LINEN_MANAGEMENT
-  OTHER
-}
-
-enum HospitalityHousekeepingEquipmentName {
-  VACUUM_CLEANER_INDUSTRIAL
-  FLOOR_POLISHER_BUFFER
-  STEAM_CLEANER
-  INDUSTRIAL_WASHING_MACHINE
-  INDUSTRIAL_DRYER
-  IRONING_PRESS_MACHINE
-  OTHER
-}
-
-// ==================== SECURITY SERVICES ====================
-enum SecurityServicesMachineCategory {
-  CCTV_MONITORING
-  ACCESS_CONTROL
-  ALARM_AND_DETECTION
-  OTHER
-}
-
-enum SecurityServicesEquipmentName {
-  CCTV_CAMERA_DOME_BULLET_PTZ
-  DVR_NVR_RECORDING_SYSTEM
-  MONITOR_AND_CONTROL_PANEL
-  ELECTRONIC_CARD_READER_RFID_MAG
-  BIOMETRIC_SCANNER_FINGERPRINT_IRIS
-  DOOR_LOCKING_MECHANISM_ELECTRIC_MAGNETIC
-  MOTION_DETECTOR_SENSOR
-  ALARM_CONTROL_PANEL
-  OTHER
-}
-
-// ==================== IT / COMPUTER LAB ====================
-enum ITComputerLabMachineCategory {
-  DESKTOP_COMPUTING
-  NETWORKING
-  SERVER_AND_STORAGE
-  PERIPHERAL_DEVICES
-  TESTING_AND_DEBUGGING
-  OTHER
-}
-
-enum ITComputerLabEquipmentName {
-  DESKTOP_COMPUTER_WORKSTATION
-  KEYBOARD_AND_MOUSE
-  NETWORK_SWITCH
-  WIFI_ROUTER
-  ETHERNET_CABLES_AND_CONNECTORS
-  SERVER_UNIT
-  EXTERNAL_HARD_DRIVE_NAS
-  PRINTER_NETWORK
-  SOFTWARE_TESTING_TOOLS
-  OTHER
-}
-
-// ==================== TEXTILE / SEWING ====================
-enum TextileSewingMachineCategory {
-  SEWING_MACHINES
-  CUTTING_AND_MARKING
-  PRESSING_AND_FINISHING
-  DYEING_AND_TREATMENT
-  OTHER
-}
-
-enum TextileSewingEquipmentName {
-  MANUAL_SEWING_MACHINE
-  ELECTRIC_SEWING_MACHINE
-  OVERLOCKING_MACHINE_SERGER
-  EMBROIDERY_MACHINE
-  FABRIC_CUTTING_TABLE
-  ROTARY_CUTTER_AND_MAT
-  INDUSTRIAL_PRESS_MACHINE
-  PRESSING_TABLE
-  TEXTILE_DYEING_VAT
-  OTHER
-}
-
-// ==================== MATERIAL TESTING / QUALITY ====================
-enum MaterialTestingQualityMachineCategory {
-  MECHANICAL_TESTING
-  MATERIAL_HARDNESS
-  DIMENSIONAL_AND_PRECISION
-  CHEMICAL_AND_METALLURGY
-  QUALITY_CONTROL
-  OTHER
-}
-
-enum MaterialTestingQualityEquipmentName {
+// Material Testing / Quality Equipment
+enum MaterialTestingEquipmentName {
   TENSILE_TESTING_MACHINE
   COMPRESSION_TESTING_MACHINE
   IMPACT_TESTING_MACHINE_CHARPY_IZOD
   HARDNESS_TESTER_ROCKWELL_BRINELL_VICKERS
-  MICROHARDNESS_TESTING_EQUIPMENT
   OPTICAL_COMPARATOR
-  THICKNESS_GAUGE
-  SPECTROMETER_MATERIAL_COMPOSITION
-  METALLOGRAPHIC_MICROSCOPE
-  DIGITAL_SCALE_BALANCE
   ENVIRONMENTAL_CHAMBER
-  OTHER
 }
 
-// Equipment Master Data
+// Advanced Manufacturing/CNC Equipment
+enum AdvancedManufacturingEquipmentName {
+  CNC_VERTICAL_MACHINING_CENTER_3_4_AXIS
+  CNC_LATHE_2_AXIS
+}
+
+// Automotive/Mechanic Equipment
+enum AutomotiveEquipmentName {
+  MOTOR_VEHICLE_TRAINING_MODEL
+}
+
+// ==================== EQUIPMENT MODEL ====================
 model Equipment {
-  id                String       @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String       @unique
-  name              String
-  department        Department
-  labId             String       @db.ObjectId
-  lab               Lab          @relation(fields: [labId], references: [id], onDelete: Restrict)
-  manufacturer      String
-  model             String
-  serialNumber      String?
-  purchaseDate      DateTime
-  warrantyExpiry    DateTime?
-  specifications    Json?
-  imageUrl          String?
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId    String     @unique // Public equipment ID
+  name           String
+  department     Department
+  labId          String     @db.ObjectId
+  lab            Lab        @relation(fields: [labId], references: [id], onDelete: Restrict)
+  manufacturer   String
+  model          String
+  serialNumber   String?
+  purchaseDate   DateTime
+  warrantyExpiry DateTime?
+  specifications Json?
+  imageUrl       String?
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  // Machine Category fields
-  machineCategoryMechanical             MechanicalMachineCategory?
-  machineCategoryFitter                 FitterMachineCategory?
-  machineCategoryElectrical             ElectricalMachineCategory?
-  machineCategoryElectronics            ElectronicsMachineCategory?
-  machineCategoryAutomotive             AutomotiveMachineCategory?
-  machineCategoryWelding                WeldingMachineCategory?
-  machineCategoryRefrigerationAC        RefrigerationACMachineCategory?
-  machineCategoryCarpentry              CarpentryMachineCategory?
-  machineCategoryPlumbing               PlumbingMachineCategory?
-  machineCategoryAdvancedManufacturing  AdvancedManufacturingMachineCategory?
-  machineCategoryToolDieMaking          ToolDieMakingMachineCategory?
-  machineCategoryAdditiveManufacturing  AdditiveManufacturingMachineCategory?
-  machineCategorySolarInstaller         SolarInstallerMachineCategory?
-  machineCategoryHospitalityKitchen     HospitalityKitchenMachineCategory?
-  machineCategoryHospitalityFrontOffice HospitalityFrontOfficeMachineCategory?
-  machineCategoryHospitalityHousekeeping HospitalityHousekeepingMachineCategory?
-  machineCategorySecurityServices       SecurityServicesMachineCategory?
-  machineCategoryITComputerLab          ITComputerLabMachineCategory?
-  machineCategoryTextileSewing          TextileSewingMachineCategory?
-  machineCategoryMaterialTestingQuality MaterialTestingQualityMachineCategory?
-
-  // Equipment Name fields
-  equipmentNameMechanical               MechanicalEquipmentName?
-  equipmentNameFitter                   FitterEquipmentName?
-  equipmentNameElectrical               ElectricalEquipmentName?
-  equipmentNameElectronics              ElectronicsEquipmentName?
-  equipmentNameAutomotive               AutomotiveEquipmentName?
-  equipmentNameWelding                  WeldingEquipmentName?
-  equipmentNameRefrigerationAC          RefrigerationACEquipmentName?
-  equipmentNameCarpentry                CarpentryEquipmentName?
-  equipmentNamePlumbing                 PlumbingEquipmentName?
-  equipmentNameAdvancedManufacturing    AdvancedManufacturingEquipmentName?
-  equipmentNameToolDieMaking            ToolDieMakingEquipmentName?
-  equipmentNameAdditiveManufacturing    AdditiveManufacturingEquipmentName?
-  equipmentNameSolarInstaller           SolarInstallerEquipmentName?
-  equipmentNameHospitalityKitchen       HospitalityKitchenEquipmentName?
-  equipmentNameHospitalityFrontOffice   HospitalityFrontOfficeEquipmentName?
-  equipmentNameHospitalityHousekeeping  HospitalityHousekeepingEquipmentName?
-  equipmentNameSecurityServices         SecurityServicesEquipmentName?
-  equipmentNameITComputerLab            ITComputerLabEquipmentName?
-  equipmentNameTextileSewing            TextileSewingEquipmentName?
-  equipmentNameMaterialTestingQuality   MaterialTestingQualityEquipmentName?
+  // Department-specific equipment names
+  fitterEquipmentName               FitterEquipmentName?
+  electricalEquipmentName           ElectricalEquipmentName?
+  weldingEquipmentName              WeldingEquipmentName?
+  toolDieEquipmentName              ToolDieEquipmentName?
+  additiveManufacturingEquipmentName AdditiveManufacturingEquipmentName?
+  solarInstallerEquipmentName       SolarInstallerEquipmentName?
+  materialTestingEquipmentName      MaterialTestingEquipmentName?
+  advancedManufacturingEquipmentName AdvancedManufacturingEquipmentName?
+  automotiveEquipmentName           AutomotiveEquipmentName?
 
   // Relations
-  status            EquipmentStatus?
-  sensorData        SensorData[]
-  alerts            Alert[]
-  maintenanceLogs   MaintenanceLog[]
-  usageAnalytics    UsageAnalytics[]
+  status          EquipmentStatus?
+  sensorData      SensorData[]
+  alerts          Alert[]
+  maintenanceLogs MaintenanceLog[]
+  usageAnalytics  UsageAnalytics[]
+  analyticsParams DepartmentAnalytics?
 
   @@index([labId])
+  @@index([department])
   @@map("equipment")
 }
 
-// Real-time Equipment Status
+// ==================== DEPARTMENT-SPECIFIC ANALYTICS ====================
+model DepartmentAnalytics {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId String     @unique @db.ObjectId
+  equipment   Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  department  Department
+
+  // Common parameters across all departments
+  temperature       Float? // Current temperature
+  efficiency        Float? // Efficiency percentage
+  totalUptime       Float  @default(0) // Total uptime in hours
+  totalDowntime     Float  @default(0) // Total downtime in hours
+  utilizationRate   Float  @default(0) // Percentage
+  
+  // Department-specific parameters (nullable based on department)
+  // Fitter/Manufacturing & Welding
+  vibration         Float?
+  arcStability      Float? // For welding
+  weldQuality       Float? // For welding
+  
+  // Electrical Engineering
+  voltage           Float?
+  current           Float?
+  powerFactor       Float?
+  
+  // Material Testing
+  testAccuracy      Float?
+  calibrationStatus String?
+  loadCapacity      Float?
+  
+  // Advanced Manufacturing/CNC
+  spindleSpeed      Float?
+  feedRate          Float?
+  toolWear          Float?
+  dimensionalAccuracy Float?
+  
+  // Additive Manufacturing
+  printQuality      Float?
+  layerHeight       Float?
+  materialUsage     Float?
+  
+  // Solar Installer
+  solarEfficiency   Float?
+  powerOutput       Float?
+  batteryHealth     Float?
+  
+  // Automotive
+  enginePerformance Float?
+  fuelEfficiency    Float?
+  
+  // Tool & Die Making
+  precisionLevel    Float?
+  surfaceFinish     Float?
+  
+  updatedAt DateTime @updatedAt
+
+  @@map("department_analytics")
+}
+
+// ==================== EQUIPMENT STATUS ====================
 model EquipmentStatus {
   id                  String            @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId         String            @unique @db.ObjectId
   equipment           Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   status              OperationalStatus @default(IDLE)
   healthScore         Float             @default(100)
-  temperature         Float?
-  vibration           Float?
-  energyConsumption   Float?
-  runningHours        Float             @default(0)
+  isOperatingInClass  Boolean           @default(false) // NEW: Tracks if equipment is being used in class
+  currentOperator     String?
   lastMaintenanceDate DateTime?
   nextMaintenanceDate DateTime?
-  currentOperator     String?
   lastUsedAt          DateTime?
   updatedAt           DateTime          @updatedAt
 
@@ -563,6 +299,7 @@ model EquipmentStatus {
 enum OperationalStatus {
   OPERATIONAL
   IN_USE
+  IN_CLASS     // NEW: Equipment being used during class
   IDLE
   MAINTENANCE
   FAULTY
@@ -570,28 +307,35 @@ enum OperationalStatus {
   WARNING
 }
 
-// IoT Sensor Data (Time-series)
+// ==================== SENSOR DATA ====================
 model SensorData {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId       String    @db.ObjectId
-  equipment         Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  timestamp         DateTime  @default(now())
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId String    @db.ObjectId
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  timestamp   DateTime  @default(now())
+  
+  // Generic sensor data
   temperature       Float?
   vibration         Float?
   energyConsumption Float?
   pressure          Float?
   humidity          Float?
-  rpm               Float?
+  
+  // Department-specific sensor data
   voltage           Float?
   current           Float?
-  isAnomaly         Boolean   @default(false)
-  anomalyScore      Float?
+  rpm               Float?
+  powerFactor       Float?
+  loadForce         Float?
+  
+  isAnomaly    Boolean @default(false)
+  anomalyScore Float?
 
   @@map("sensor_data")
   @@index([equipmentId, timestamp(sort: Desc)])
 }
 
-// Alerts & Notifications
+// ==================== ALERTS ====================
 model Alert {
   id            String        @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId   String        @db.ObjectId
@@ -618,6 +362,7 @@ enum AlertType {
   MAINTENANCE_DUE
   WARRANTY_EXPIRING
   UNSAFE_USAGE
+  UNSAFE_PATTERN_DETECTED // NEW: For unsafe patterns during class
   EQUIPMENT_OFFLINE
   LOW_HEALTH_SCORE
   CUSTOM
@@ -630,7 +375,7 @@ enum AlertSeverity {
   LOW
 }
 
-// User Notifications
+// ==================== NOTIFICATIONS ====================
 model Notification {
   id        String           @id @default(auto()) @map("_id") @db.ObjectId
   userId    String           @db.ObjectId
@@ -644,7 +389,7 @@ model Notification {
   createdAt DateTime         @default(now())
 
   @@map("notifications")
-  @@index([userId, createdAt(sort:Desc)])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 enum NotificationType {
@@ -653,9 +398,10 @@ enum NotificationType {
   REPORT
   SYSTEM
   CHAT
+  UNSAFE_PATTERN // NEW: For unsafe usage alerts
 }
 
-// Maintenance Logs
+// ==================== MAINTENANCE LOGS ====================
 model MaintenanceLog {
   id            String            @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId   String            @db.ObjectId
@@ -693,17 +439,18 @@ enum MaintenanceStatus {
   OVERDUE
 }
 
-// Usage Analytics
+// ==================== USAGE ANALYTICS ====================
 model UsageAnalytics {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId     String    @db.ObjectId
   equipment       Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   date            DateTime
-  totalUsageHours Float     @default(0)
-  totalDowntime   Float     @default(0)
-  utilizationRate Float     @default(0)
+  totalUsageHours Float     @default(0) // Total uptime
+  totalDowntime   Float     @default(0) // Total downtime
+  utilizationRate Float     @default(0) // Percentage
   efficiency      Float     @default(0)
-  sessionsCount   Int       @default(0)
+  sessionsCount   Int       @default(0) // Number of times equipment was used
+  classSessions   Int       @default(0) // NEW: Number of class sessions
   avgSessionTime  Float     @default(0)
   energyConsumed  Float     @default(0)
   createdAt       DateTime  @default(now())
@@ -713,7 +460,7 @@ model UsageAnalytics {
   @@index([equipmentId, date(sort: Desc)])
 }
 
-// Generated Reports
+// ==================== REPORTS ====================
 model Report {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
   reportType  ReportType
@@ -739,10 +486,12 @@ enum ReportType {
   USAGE_ANALYTICS
   ALERT_HISTORY
   ENERGY_CONSUMPTION
+  DEPARTMENT_SUMMARY  // NEW: Summary by department
+  LIFECYCLE_REPORT    // NEW: Equipment lifecycle analysis
   CUSTOM
 }
 
-// Chatbot Messages
+// ==================== CHATBOT ====================
 model ChatMessage {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @db.ObjectId
@@ -756,7 +505,7 @@ model ChatMessage {
   @@index([userId, createdAt(sort: Desc)])
 }
 
-// System Configuration
+// ==================== SYSTEM CONFIG ====================
 model SystemConfig {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   key         String   @unique

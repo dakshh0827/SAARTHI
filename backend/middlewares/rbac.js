@@ -1,12 +1,12 @@
-import { USER_ROLE_ENUM } from '../utils/constants.js';
+import { USER_ROLE_ENUM } from "../utils/constants.js";
 
 /**
  * Role-Based Access Control Middleware
  *
  * Roles:
- * - POLICY_MAKER: Full access.
- * - LAB_TECHNICIAN: Institute-level access.
- * - TRAINER: Lab-level access.
+ * - POLICY_MAKER: Full access, can manage labs
+ * - LAB_MANAGER: Department/Institute-level access, cannot manage labs
+ * - TRAINER: Lab-level access
  */
 
 const checkRole = (...allowedRoles) => {
@@ -14,14 +14,14 @@ const checkRole = (...allowedRoles) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required.',
+        message: "Authentication required.",
       });
     }
 
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. Insufficient permissions.',
+        message: "Access denied. Insufficient permissions.",
         requiredRoles: allowedRoles,
         userRole: req.user.role,
       });
@@ -33,25 +33,25 @@ const checkRole = (...allowedRoles) => {
 
 // Predefined role checks
 const isPolicyMaker = checkRole(USER_ROLE_ENUM.POLICY_MAKER);
-const isLabTechnician = checkRole(USER_ROLE_ENUM.LAB_TECHNICIAN); // --- NEW ---
-const isLabTechnicianOrAbove = checkRole(
+const isLabManager = checkRole(USER_ROLE_ENUM.LAB_MANAGER);
+const isLabManagerOrAbove = checkRole(
   USER_ROLE_ENUM.POLICY_MAKER,
-  USER_ROLE_ENUM.LAB_TECHNICIAN
+  USER_ROLE_ENUM.LAB_MANAGER
 );
 const isAuthenticated = checkRole(
   USER_ROLE_ENUM.POLICY_MAKER,
-  USER_ROLE_ENUM.LAB_TECHNICIAN,
+  USER_ROLE_ENUM.LAB_MANAGER,
   USER_ROLE_ENUM.TRAINER
 );
 
 // Permission-based middleware
 const can = {
   // Equipment permissions
-  manageEquipment: isLabTechnicianOrAbove,
+  manageEquipment: isLabManagerOrAbove,
   viewEquipment: isAuthenticated,
 
   // Maintenance permissions
-  manageMaintenance: isLabTechnicianOrAbove,
+  manageMaintenance: isLabManagerOrAbove,
   viewMaintenance: isAuthenticated,
 
   // Analytics permissions
@@ -59,20 +59,19 @@ const can = {
   viewBasicAnalytics: isAuthenticated,
 
   // Report permissions
-  generateReports: isLabTechnicianOrAbove,
+  generateReports: isLabManagerOrAbove,
   viewReports: isAuthenticated,
 
   // Alert permissions
-  manageAlerts: isLabTechnicianOrAbove,
+  manageAlerts: isLabManagerOrAbove,
   viewAlerts: isAuthenticated,
 
   // User management
   manageUsers: isPolicyMaker,
 
-  // Lab management
-  // --- LOGIC FLIPPED AS REQUESTED ---
-  manageLabs: isLabTechnician, // Only Lab Technicians can manage labs
-  viewLabs: isLabTechnicianOrAbove, // Policy Makers can still view labs
+  // Lab management - ONLY POLICY_MAKER can manage labs
+  manageLabs: isPolicyMaker,
+  viewLabs: isLabManagerOrAbove,
 
   // System configuration
   manageSystem: isPolicyMaker,
@@ -82,42 +81,77 @@ const can = {
  * Creates a Prisma 'where' filter based on the user's role to restrict data access.
  */
 const filterDataByRole = (req) => {
-  const { role, institute, labId } = req.user;
+  const { role, institute, department, labId } = req.user;
 
   switch (role) {
     /**
-     * POLICY_MAKER can see everything.
+     * POLICY_MAKER can see everything across all institutes
      */
     case USER_ROLE_ENUM.POLICY_MAKER:
       return {};
 
     /**
-     * LAB_TECHNICIAN can see everything within their institute.
+     * LAB_MANAGER can see everything within their department and institute
+     * They manage multiple labs under their department
      */
-    case USER_ROLE_ENUM.LAB_TECHNICIAN:
-      if (!institute) {
-        return { id: null }; // Deny access if institute is not set
+    case USER_ROLE_ENUM.LAB_MANAGER:
+      if (!institute || !department) {
+        return { id: null }; // Deny access if not properly configured
       }
       return {
         lab: {
           institute: institute,
+          department: department,
         },
       };
 
     /**
-     * TRAINER can see everything within their specific lab.
+     * TRAINER can see everything within their specific lab only
      */
     case USER_ROLE_ENUM.TRAINER:
       if (!labId) {
         return { id: null }; // Deny access if lab is not set
       }
       return {
-        labId: labId, // This is the INTERNAL labId
+        labId: labId,
       };
 
     /**
-     * Default case: deny access.
+     * Default case: deny access
      */
+    default:
+      return { id: null };
+  }
+};
+
+/**
+ * Filter for Lab queries based on user role
+ */
+const filterLabsByRole = (req) => {
+  const { role, institute, department } = req.user;
+
+  switch (role) {
+    case USER_ROLE_ENUM.POLICY_MAKER:
+      return {}; // Can see all labs
+
+    case USER_ROLE_ENUM.LAB_MANAGER:
+      if (!institute || !department) {
+        return { id: null };
+      }
+      return {
+        institute: institute,
+        department: department,
+      };
+
+    case USER_ROLE_ENUM.TRAINER:
+      // Trainers should only see their own lab
+      if (!req.user.labId) {
+        return { id: null };
+      }
+      return {
+        id: req.user.labId,
+      };
+
     default:
       return { id: null };
   }
@@ -126,9 +160,10 @@ const filterDataByRole = (req) => {
 export {
   checkRole,
   isPolicyMaker,
-  isLabTechnician,
-  isLabTechnicianOrAbove,
+  isLabManager,
+  isLabManagerOrAbove,
   isAuthenticated,
   can,
   filterDataByRole,
+  filterLabsByRole,
 };

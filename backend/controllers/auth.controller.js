@@ -11,28 +11,19 @@ import {
 } from "../utils/constants.js";
 import EmailService from "../utils/emailService.js";
 
-/**
- * Wraps async functions to catch errors and pass to next middleware.
- */
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
-/**
- * Generates a 6-digit OTP.
- */
 const generateOtp = () => crypto.randomInt(100000, 999999).toString();
 
-/**
- * Generates a JWT token for a user.
- */
 const generateAccessToken = (user) => {
-  // The user object should just be the payload
   const payload = {
-    userId: user.id || user.userId, // Handle both user object and payload
+    userId: user.id || user.userId,
     email: user.email,
     role: user.role,
     institute: user.institute,
+    department: user.department,
     labId: user.labId,
   };
   return jwt.sign(payload, jwtConfig.secret, {
@@ -40,12 +31,7 @@ const generateAccessToken = (user) => {
   });
 };
 
-// --- NEW FUNCTION ---
-/**
- * Generates a Refresh Token (long-lived).
- */
 const generateRefreshToken = (user) => {
-  // Refresh token only needs the user ID
   const payload = {
     userId: user.id || user.userId,
   };
@@ -53,13 +39,8 @@ const generateRefreshToken = (user) => {
     expiresIn: jwtConfig.refreshExpiresIn,
   });
 };
+
 class AuthController {
-  /**
-   * Step 1: Register new user (creates unverified user and sends OTP)
-   */
-  /**
-   * Step 1: Register new user (creates unverified user and sends OTP)
-   */
   register = asyncHandler(async (req, res, next) => {
     const {
       email,
@@ -69,10 +50,10 @@ class AuthController {
       role,
       phone,
       institute,
+      department,
       labId,
     } = req.body;
 
-    // Check if user exists and is verified
     let existingUser = await prisma.user.findUnique({ where: { email } });
 
     if (existingUser && existingUser.emailVerified) {
@@ -92,8 +73,6 @@ class AuthController {
         });
       }
 
-      // Find lab by PUBLIC ID and get internal ObjectId
-      // FIXED: Added trimming and case-insensitive search
       const lab = await prisma.lab.findFirst({
         where: {
           labId: {
@@ -104,10 +83,7 @@ class AuthController {
       });
 
       if (!lab) {
-        // Log for debugging
         logger.error(`Lab not found with labId: "${labId}"`);
-
-        // Get all labs to help with debugging
         const allLabs = await prisma.lab.findMany({
           select: { labId: true, name: true },
         });
@@ -123,10 +99,8 @@ class AuthController {
       logger.info(`Lab found: ${lab.name} (ID: ${lab.id})`);
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Prepare base user data
     const baseUserData = {
       email,
       password: hashedPassword,
@@ -135,15 +109,14 @@ class AuthController {
       role: role || USER_ROLE_ENUM.TRAINER,
       phone,
       institute:
-        role === USER_ROLE_ENUM.LAB_TECHNICIAN ||
-        role === USER_ROLE_ENUM.TRAINER
+        role === USER_ROLE_ENUM.LAB_MANAGER || role === USER_ROLE_ENUM.TRAINER
           ? institute
           : null,
+      department: role === USER_ROLE_ENUM.LAB_MANAGER ? department : null,
       emailVerified: false,
       authProvider: AUTH_PROVIDER_ENUM.CREDENTIAL,
     };
 
-    // Prepare create data with lab connection if needed
     const createData = {
       ...baseUserData,
       ...(labInternalId && {
@@ -153,8 +126,6 @@ class AuthController {
       }),
     };
 
-    // Prepare update data with lab connection if needed
-    // NOTE: Don't include 'id' in update data - it's immutable
     const updateData = {
       ...baseUserData,
       ...(labInternalId && {
@@ -164,24 +135,20 @@ class AuthController {
       }),
     };
 
-    // Create or update unverified user
     const user = await prisma.user.upsert({
       where: { email },
       update: updateData,
       create: createData,
     });
 
-    // Generate and send OTP
     const otp = generateOtp();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Invalidate old OTPs for registration
     await prisma.oTP.updateMany({
       where: { email, purpose: OTP_PURPOSE_ENUM.REGISTRATION, isUsed: false },
       data: { isUsed: true },
     });
 
-    // Create new OTP
     await prisma.oTP.create({
       data: {
         email,
@@ -191,7 +158,6 @@ class AuthController {
       },
     });
 
-    // Send OTP email (async, don't block response)
     EmailService.sendMail(email, otp).catch((err) =>
       logger.error("Failed to send OTP email:", err)
     );
@@ -212,13 +178,9 @@ class AuthController {
     });
   });
 
-  /**
-   * Step 2: Verify email with OTP
-   */
   verifyEmail = asyncHandler(async (req, res, next) => {
     const { email, otp, purpose = OTP_PURPOSE_ENUM.REGISTRATION } = req.body;
 
-    // Find the latest valid OTP
     const validOtp = await prisma.oTP.findFirst({
       where: {
         email,
@@ -237,13 +199,11 @@ class AuthController {
       });
     }
 
-    // Mark OTP as used
     await prisma.oTP.update({
       where: { id: validOtp.id },
       data: { isUsed: true },
     });
 
-    // Find and update user
     const user = await prisma.user.update({
       where: { email },
       data: { emailVerified: true },
@@ -254,25 +214,24 @@ class AuthController {
         lastName: true,
         role: true,
         institute: true,
+        department: true,
         labId: true,
         lab: { select: { name: true } },
       },
     });
 
-    // Send welcome email (async)
     EmailService.sendWelcomeEmail(email, user.firstName).catch((err) =>
       logger.error("Failed to send welcome email:", err)
     );
 
-    // Generate JWT token
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true, // Prevents client-side JS from accessing it
-      secure: process.env.NODE_ENV === "production", // Only send over HTTPS
-      sameSite: "strict", // Helps prevent CSRF
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (in milliseconds)
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     logger.info(`Email verified for user: ${email}`);
@@ -280,19 +239,15 @@ class AuthController {
       success: true,
       message: "Email verified successfully. You are now logged in.",
       data: {
-        accessToken, // Renamed from 'token'
+        accessToken,
         user,
       },
     });
   });
 
-  /**
-   * Resend OTP for email verification or login
-   */
   resendOtp = asyncHandler(async (req, res, next) => {
     const { email, purpose = OTP_PURPOSE_ENUM.REGISTRATION } = req.body;
 
-    // Check if user exists
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
@@ -302,7 +257,6 @@ class AuthController {
       });
     }
 
-    // Check if email is already verified for registration purpose
     if (purpose === OTP_PURPOSE_ENUM.REGISTRATION && user.emailVerified) {
       return res.status(400).json({
         success: false,
@@ -310,22 +264,18 @@ class AuthController {
       });
     }
 
-    // Generate new OTP
     const otp = generateOtp();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Invalidate old OTPs
     await prisma.oTP.updateMany({
       where: { email, purpose, isUsed: false },
       data: { isUsed: true },
     });
 
-    // Create new OTP
     await prisma.oTP.create({
       data: { email, otp, purpose, expiresAt },
     });
 
-    // Send OTP email
     EmailService.sendMail(email, otp).catch((err) =>
       logger.error("Failed to send OTP email:", err)
     );
@@ -337,14 +287,9 @@ class AuthController {
     });
   });
 
-  /**
-   * Step 1: Initiate login (send OTP for credential-based login if enabled)
-   * Or direct login without OTP
-   */
   login = asyncHandler(async (req, res, next) => {
     const { email, password, requireOtp = false } = req.body;
 
-    // Find user
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
@@ -354,7 +299,6 @@ class AuthController {
       });
     }
 
-    // Check auth provider
     if (user.authProvider !== AUTH_PROVIDER_ENUM.CREDENTIAL) {
       return res.status(401).json({
         success: false,
@@ -362,7 +306,6 @@ class AuthController {
       });
     }
 
-    // Check if user has password
     if (!user.password) {
       return res.status(401).json({
         success: false,
@@ -370,7 +313,6 @@ class AuthController {
       });
     }
 
-    // Check if email is verified
     if (!user.emailVerified) {
       return res.status(403).json({
         success: false,
@@ -380,7 +322,6 @@ class AuthController {
       });
     }
 
-    // Check if account is active
     if (!user.isActive) {
       return res.status(403).json({
         success: false,
@@ -388,7 +329,6 @@ class AuthController {
       });
     }
 
-    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -397,7 +337,6 @@ class AuthController {
       });
     }
 
-    // If OTP is required for login, send OTP
     if (requireOtp) {
       const otp = generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -423,7 +362,6 @@ class AuthController {
       });
     }
 
-    // Direct login without OTP
     const userPayload = {
       id: user.id,
       email: user.email,
@@ -431,6 +369,7 @@ class AuthController {
       lastName: user.lastName,
       role: user.role,
       institute: user.institute,
+      department: user.department,
       labId: user.labId,
     };
 
@@ -441,28 +380,23 @@ class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     logger.info(`User logged in: ${email}`);
-    // Send access token in JSON response
     res.json({
       success: true,
       message: "Login successful.",
       data: {
-        accessToken, // Renamed from 'token'
+        accessToken,
         user: userPayload,
       },
     });
   });
 
-  /**
-   * Step 2: Complete login with OTP (if OTP-based login is used)
-   */
   completeLogin = asyncHandler(async (req, res, next) => {
     const { email, otp } = req.body;
 
-    // Find the latest valid OTP
     const validOtp = await prisma.oTP.findFirst({
       where: {
         email,
@@ -481,13 +415,11 @@ class AuthController {
       });
     }
 
-    // Mark OTP as used
     await prisma.oTP.update({
       where: { id: validOtp.id },
       data: { isUsed: true },
     });
 
-    // Get user
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -497,38 +429,32 @@ class AuthController {
         lastName: true,
         role: true,
         institute: true,
+        department: true,
         labId: true,
       },
     });
 
-    // Generate JWT token
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    // Send refresh token in secure, HttpOnly cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     logger.info(`User logged in via OTP: ${email}`);
-    // Send access token in JSON response
     res.json({
       success: true,
       message: "Login successful.",
       data: {
-        accessToken, // Renamed from 'token'
+        accessToken,
         user,
       },
     });
-    // --- END MODIFIED SECTION ---
   });
 
-  /**
-   * OAuth callback handler (for both Google and GitHub)
-   */
   oauthCallback = asyncHandler(async (req, res, next) => {
     const user = req.user;
 
@@ -538,12 +464,9 @@ class AuthController {
       );
     }
 
-    // Generate JWT token
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    // Send refresh token in cookie
-    // Note: This is a redirect, so we set the cookie first
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -555,38 +478,22 @@ class AuthController {
       `User logged in via OAuth (${user.authProvider}): ${user.email}`
     );
 
-    // Redirect to frontend with access token in URL query
-    // The frontend will need to read this from the URL and save it
     res.redirect(
       `${process.env.FRONTEND_URL}/auth/callback?token=${accessToken}`
     );
-    // --- END MODIFIED SECTION ---
   });
 
-  /**
-   * Google OAuth - Redirects to Google's consent screen
-   */
   googleAuth = (req, res) => {
     logger.debug("Redirecting to Google for authentication...");
   };
 
-  /**
-   * GitHub OAuth - Redirects to GitHub's consent screen
-   */
   githubAuth = (req, res) => {
     logger.debug("Redirecting to GitHub for authentication...");
   };
 
-  /**
-   * Get current user profile
-   */
   getProfile = asyncHandler(async (req, res, next) => {
-    // --- THIS IS THE FIX ---
-    // The auth.js middleware sets req.user to the user object from Prisma,
-    // which has an 'id' field, not 'userId'.
     const user = await prisma.user.findUnique({
-      where: { id: req.user.id }, // Change req.user.userId to req.user.id
-      // --- END FIX ---
+      where: { id: req.user.id },
       select: {
         id: true,
         email: true,
@@ -595,6 +502,7 @@ class AuthController {
         role: true,
         phone: true,
         institute: true,
+        department: true,
         labId: true,
         isActive: true,
         emailVerified: true,
@@ -616,14 +524,12 @@ class AuthController {
       data: user,
     });
   });
-  /**
-   * Update profile
-   */
+
   updateProfile = asyncHandler(async (req, res, next) => {
     const { firstName, lastName, phone } = req.body;
 
     const user = await prisma.user.update({
-      where: { id: req.user.userId },
+      where: { id: req.user.id },
       data: {
         ...(firstName && { firstName }),
         ...(lastName && { lastName }),
@@ -637,6 +543,7 @@ class AuthController {
         role: true,
         phone: true,
         institute: true,
+        department: true,
         labId: true,
       },
     });
@@ -649,15 +556,11 @@ class AuthController {
     });
   });
 
-  /**
-   * Change password
-   */
   changePassword = asyncHandler(async (req, res, next) => {
     const { currentPassword, newPassword } = req.body;
 
-    // Get user with password
     const user = await prisma.user.findUnique({
-      where: { id: req.user.userId },
+      where: { id: req.user.id },
     });
 
     if (!user) {
@@ -667,7 +570,6 @@ class AuthController {
       });
     }
 
-    // Check if user has password (not OAuth-only)
     if (!user.password) {
       return res.status(400).json({
         success: false,
@@ -675,7 +577,6 @@ class AuthController {
       });
     }
 
-    // Verify current password
     const isPasswordValid = await bcrypt.compare(
       currentPassword,
       user.password
@@ -687,12 +588,10 @@ class AuthController {
       });
     }
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update password
     await prisma.user.update({
-      where: { id: req.user.userId },
+      where: { id: req.user.id },
       data: { password: hashedPassword },
     });
 
@@ -704,7 +603,6 @@ class AuthController {
   });
 
   refreshToken = asyncHandler(async (req, res, next) => {
-    // 1. Get refresh token from cookie
     const token = req.cookies.refreshToken;
 
     if (!token) {
@@ -715,17 +613,14 @@ class AuthController {
 
     let payload;
     try {
-      // 2. Verify the refresh token
       payload = jwt.verify(token, jwtConfig.refreshSecret);
     } catch (err) {
       logger.warn("Invalid refresh token received:", err.message);
-      // This catches expired tokens or invalid signatures
       return res
         .status(403)
         .json({ success: false, message: "Invalid or expired refresh token." });
     }
 
-    // 3. Token is valid, get user data to create new access token
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: {
@@ -733,24 +628,24 @@ class AuthController {
         email: true,
         role: true,
         institute: true,
+        department: true,
         labId: true,
-        isActive: true, // IMPORTANT: Check if user is still active
+        isActive: true,
       },
     });
 
-    // 4. Check if user exists and is active
     if (!user || !user.isActive) {
       return res
         .status(403)
         .json({ success: false, message: "User not found or deactivated." });
     }
 
-    // 5. Issue new access token
     const userPayload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       institute: user.institute,
+      department: user.department,
       labId: user.labId,
     };
     const accessToken = generateAccessToken(userPayload);
@@ -764,13 +659,7 @@ class AuthController {
     });
   });
 
-  // --- NEW METHOD ---
-  /**
-   * Logs the user out by clearing the refresh token cookie
-   */
   logout = asyncHandler(async (req, res, next) => {
-    // We can't invalidate the stateless token,
-    // but we can clear the cookie on the client's browser.
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

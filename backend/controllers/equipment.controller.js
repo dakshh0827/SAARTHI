@@ -1,7 +1,7 @@
-import prisma from '../config/database.js';
-import logger from '../utils/logger.js';
-import { filterDataByRole } from '../middlewares/rbac.js';
-import { DEPARTMENT_FIELD_MAP } from '../utils/constants.js';
+import prisma from "../config/database.js";
+import logger from "../utils/logger.js";
+import { filterDataByRole } from "../middlewares/rbac.js";
+import { DEPARTMENT_EQUIPMENT_FIELD_MAP } from "../utils/constants.js";
 
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -11,7 +11,7 @@ const asyncHandler = (fn) => (req, res, next) => {
  * Helper function to map department-specific fields
  */
 const mapDepartmentFields = (department, machineCategory, equipmentName) => {
-  const fields = DEPARTMENT_FIELD_MAP[department];
+  const fields = DEPARTMENT_EQUIPMENT_FIELD_MAP[department];
   if (!fields) {
     return {};
   }
@@ -24,9 +24,17 @@ const mapDepartmentFields = (department, machineCategory, equipmentName) => {
 class EquipmentController {
   // Get all equipment
   getAllEquipment = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10, department, status, institute, labId, search } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      department,
+      status,
+      institute,
+      labId,
+      search,
+    } = req.query;
     const skip = (page - 1) * limit;
-    
+
     // 1. Get the base filter from RBAC
     const roleFilter = filterDataByRole(req);
 
@@ -36,16 +44,16 @@ class EquipmentController {
       ...(department && { department }),
       ...(search && {
         OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { equipmentId: { contains: search, mode: 'insensitive' } },
-          { manufacturer: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: "insensitive" } },
+          { equipmentId: { contains: search, mode: "insensitive" } },
+          { manufacturer: { contains: search, mode: "insensitive" } },
         ],
       }),
       isActive: true,
     };
 
     // 3. Add conditional filters for Lab Techs and Policy Makers
-    if (req.user.role !== 'TRAINER') {
+    if (req.user.role !== "TRAINER") {
       // Lab Techs and Policy Makers can filter by institute
       if (institute) {
         where.lab = { ...(where.lab || {}), institute: institute };
@@ -55,7 +63,7 @@ class EquipmentController {
         where.labId = labId;
       }
     }
-    
+
     // 4. Add status filter
     if (status) {
       where.status = { status };
@@ -76,7 +84,7 @@ class EquipmentController {
         },
         skip: parseInt(skip),
         take: parseInt(limit),
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       prisma.equipment.count({ where }),
     ]);
@@ -105,11 +113,11 @@ class EquipmentController {
         lab: { select: { name: true, institute: true } },
         alerts: {
           where: { isResolved: false },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 5,
         },
         maintenanceLogs: {
-          orderBy: { scheduledDate: 'desc' },
+          orderBy: { scheduledDate: "desc" },
           take: 5,
           include: {
             technician: {
@@ -122,7 +130,7 @@ class EquipmentController {
           },
         },
         usageAnalytics: {
-          orderBy: { date: 'desc' },
+          orderBy: { date: "desc" },
           take: 7,
         },
       },
@@ -131,7 +139,7 @@ class EquipmentController {
     if (!equipment) {
       return res.status(404).json({
         success: false,
-        message: 'Equipment not found or access denied.',
+        message: "Equipment not found or access denied.",
       });
     }
 
@@ -159,31 +167,47 @@ class EquipmentController {
       imageUrl,
     } = req.body;
 
-    const existing = await prisma.equipment.findUnique({ where: { equipmentId } });
+    const existing = await prisma.equipment.findUnique({
+      where: { equipmentId },
+    });
     if (existing) {
       return res.status(409).json({
         success: false,
-        message: 'Equipment ID already exists.',
+        message: "Equipment ID already exists.",
       });
     }
-    
+
     // --- NEW: Lab ID Translation ---
     if (!labId) {
-        return res.status(400).json({ success: false, message: 'labId is required.' });
+      return res
+        .status(400)
+        .json({ success: false, message: "labId is required." });
     }
-    const lab = await prisma.lab.findUnique({ where: { labId: labId }}); // Find lab by PUBLIC ID
+    const lab = await prisma.lab.findUnique({ where: { labId: labId } }); // Find lab by PUBLIC ID
     if (!lab) {
-        return res.status(400).json({ success: false, message: 'Invalid Lab ID provided.'});
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid Lab ID provided." });
     }
     const labInternalId = lab.id; // Get the internal ObjectId for the relation
     // --- END NEW ---
-    
+
     // (Security Check) Ensure Lab Tech can only add to their own institute
-    if (req.user.role === 'LAB_TECHNICIAN' && lab.institute !== req.user.institute) {
-        return res.status(403).json({ success: false, message: 'You can only add equipment to your own institute.' });
+    if (
+      req.user.role === "LAB_MANAGER" &&
+      lab.institute !== req.user.institute
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only add equipment to your own institute.",
+      });
     }
 
-    const departmentFields = mapDepartmentFields(department, machineCategory, equipmentName);
+    const departmentFields = mapDepartmentFields(
+      department,
+      machineCategory,
+      equipmentName
+    );
 
     const equipment = await prisma.equipment.create({
       data: {
@@ -201,7 +225,7 @@ class EquipmentController {
         imageUrl,
         status: {
           create: {
-            status: 'IDLE',
+            status: "IDLE",
             healthScore: 100,
           },
         },
@@ -215,7 +239,7 @@ class EquipmentController {
     logger.info(`Equipment created: ${equipmentId} by ${req.user.email}`);
     res.status(201).json({
       success: true,
-      message: 'Equipment created successfully.',
+      message: "Equipment created successfully.",
       data: equipment,
     });
   });
@@ -223,7 +247,8 @@ class EquipmentController {
   // Update equipment
   updateEquipment = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { department, machineCategory, equipmentName, labId, ...updateData } = req.body;
+    const { department, machineCategory, equipmentName, labId, ...updateData } =
+      req.body;
 
     delete updateData.equipmentId;
     delete updateData.createdAt;
@@ -232,35 +257,55 @@ class EquipmentController {
     // First, check if equipment exists and user has access
     const roleFilter = filterDataByRole(req);
     const existingEquipment = await prisma.equipment.findFirst({
-        where: { id, ...roleFilter },
-        include: { lab: true }
+      where: { id, ...roleFilter },
+      include: { lab: true },
     });
 
     if (!existingEquipment) {
-        return res.status(404).json({ success: false, message: 'Equipment not found or access denied.' });
+      return res.status(404).json({
+        success: false,
+        message: "Equipment not found or access denied.",
+      });
     }
 
     let departmentFields = {};
     if (department) {
-      const oldFields = mapDepartmentFields(existingEquipment.department, 'clear', 'clear');
+      const oldFields = mapDepartmentFields(
+        existingEquipment.department,
+        "clear",
+        "clear"
+      );
       for (const key in oldFields) {
         updateData[key] = null;
       }
-      departmentFields = mapDepartmentFields(department, machineCategory, equipmentName);
+      departmentFields = mapDepartmentFields(
+        department,
+        machineCategory,
+        equipmentName
+      );
       updateData.department = department;
     }
-    
+
     // --- NEW: Lab ID Translation (on update) ---
-    if (labId && labId !== existingEquipment.lab.labId) { // Check against public labId
-        const newLab = await prisma.lab.findUnique({ where: { labId: labId }}); // Find by public labId
-        if (!newLab) {
-            return res.status(400).json({ success: false, message: 'Invalid new Lab ID.'});
-        }
-        // Lab Tech can only move equipment *within* their institute
-        if (req.user.role === 'LAB_TECHNICIAN' && newLab.institute !== req.user.institute) {
-            return res.status(403).json({ success: false, message: 'You can only move equipment within your own institute.' });
-        }
-        updateData.labId = newLab.id; // Set the internal ID for the relation
+    if (labId && labId !== existingEquipment.lab.labId) {
+      // Check against public labId
+      const newLab = await prisma.lab.findUnique({ where: { labId: labId } }); // Find by public labId
+      if (!newLab) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid new Lab ID." });
+      }
+      // Lab Tech can only move equipment *within* their institute
+      if (
+        req.user.role === "LAB_MANAGER" &&
+        newLab.institute !== req.user.institute
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only move equipment within your own institute.",
+        });
+      }
+      updateData.labId = newLab.id; // Set the internal ID for the relation
     }
     // --- END NEW ---
 
@@ -269,8 +314,12 @@ class EquipmentController {
       data: {
         ...updateData,
         ...departmentFields,
-        ...(updateData.purchaseDate && { purchaseDate: new Date(updateData.purchaseDate) }),
-        ...(updateData.warrantyExpiry && { warrantyExpiry: new Date(updateData.warrantyExpiry) }),
+        ...(updateData.purchaseDate && {
+          purchaseDate: new Date(updateData.purchaseDate),
+        }),
+        ...(updateData.warrantyExpiry && {
+          warrantyExpiry: new Date(updateData.warrantyExpiry),
+        }),
       },
       include: {
         status: true,
@@ -278,10 +327,12 @@ class EquipmentController {
       },
     });
 
-    logger.info(`Equipment updated: ${equipment.equipmentId} by ${req.user.email}`);
+    logger.info(
+      `Equipment updated: ${equipment.equipmentId} by ${req.user.email}`
+    );
     res.json({
       success: true,
-      message: 'Equipment updated successfully.',
+      message: "Equipment updated successfully.",
       data: equipment,
     });
   });
@@ -293,10 +344,13 @@ class EquipmentController {
     // Check access first
     const roleFilter = filterDataByRole(req);
     const equipment = await prisma.equipment.findFirst({
-        where: { id, ...roleFilter }
+      where: { id, ...roleFilter },
     });
     if (!equipment) {
-        return res.status(404).json({ success: false, message: 'Equipment not found or access denied.' });
+      return res.status(404).json({
+        success: false,
+        message: "Equipment not found or access denied.",
+      });
     }
 
     const deletedEquipment = await prisma.equipment.update({
@@ -304,10 +358,12 @@ class EquipmentController {
       data: { isActive: false },
     });
 
-    logger.info(`Equipment deleted: ${deletedEquipment.equipmentId} by ${req.user.email}`);
+    logger.info(
+      `Equipment deleted: ${deletedEquipment.equipmentId} by ${req.user.email}`
+    );
     res.json({
       success: true,
-      message: 'Equipment deleted successfully.',
+      message: "Equipment deleted successfully.",
     });
   });
 
@@ -318,12 +374,12 @@ class EquipmentController {
     const [total, byStatus, byDepartment] = await Promise.all([
       prisma.equipment.count({ where: { ...roleFilter, isActive: true } }),
       prisma.equipmentStatus.groupBy({
-        by: ['status'],
+        by: ["status"],
         where: { equipment: { ...roleFilter, isActive: true } },
         _count: true,
       }),
       prisma.equipment.groupBy({
-        by: ['department'],
+        by: ["department"],
         where: { ...roleFilter, isActive: true },
         _count: true,
       }),

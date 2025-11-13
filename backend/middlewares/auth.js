@@ -1,9 +1,6 @@
-// =====================================================
-// backend/middlewares/auth.js (FIXED - PLEASE RE-APPLY)
-// =====================================================
-
 import jwt from "jsonwebtoken";
 import prisma from "../config/database.js";
+import { jwtConfig } from "../config/jwt.js";
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -18,14 +15,11 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, jwtConfig.secret);
 
-    // Get user from database
+    // Get user from database with all necessary fields
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      // --- THIS IS THE FIX ---
-      // You MUST select labId here so it's available in req.user
-      // for the rbac.js (filterDataByRole) middleware.
       select: {
         id: true,
         email: true,
@@ -33,10 +27,10 @@ const authMiddleware = async (req, res, next) => {
         lastName: true,
         role: true,
         institute: true,
+        department: true, // Required for LAB_MANAGER
+        labId: true, // Required for TRAINER
         isActive: true,
-        labId: true, // <-- THIS LINE IS CRUCIAL
       },
-      // --- END FIX ---
     });
 
     if (!user) {

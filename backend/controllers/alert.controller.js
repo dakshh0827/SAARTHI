@@ -1,7 +1,3 @@
-// =====================================================
-// backend/controllers/alert.controller.js (FIXED)
-// =====================================================
-
 import prisma from "../config/database.js";
 import logger from "../utils/logger.js";
 import { filterDataByRole } from "../middlewares/rbac.js";
@@ -28,15 +24,11 @@ class AlertController {
         where,
         include: {
           equipment: {
-            // --- THIS IS THE FIX ---
-            // 'location' does not exist on the Equipment model.
-            // We will select the 'lab' name instead, which is more useful.
             select: {
               equipmentId: true,
               name: true,
-              lab: { select: { name: true } },
+              lab: { select: { name: true, institute: true } },
             },
-            // --- END FIX ---
           },
         },
         skip: parseInt(skip),

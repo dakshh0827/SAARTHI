@@ -1,12 +1,17 @@
-import prisma from '../config/database.js';
-import logger from '../utils/logger.js';
-import { filterDataByRole } from '../middlewares/rbac.js';
+import prisma from "../config/database.js";
+import logger from "../utils/logger.js";
+import { filterDataByRole } from "../middlewares/rbac.js";
 import {
   broadcastAlert,
   broadcastNotification,
   broadcastEquipmentStatus,
-} from '../config/socketio.js';
-import { ALERT_SEVERITY, ALERT_TYPE, NOTIFICATION_TYPE, USER_ROLE_ENUM } from '../utils/constants.js';
+} from "../config/socketio.js";
+import {
+  ALERT_SEVERITY,
+  ALERT_TYPE,
+  NOTIFICATION_TYPE,
+  USER_ROLE_ENUM,
+} from "../utils/constants.js";
 
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -30,7 +35,7 @@ const getPolicyMakerDashboard = async () => {
     prisma.alert.count({ where: { isResolved: false } }),
     prisma.maintenanceLog.count({
       where: {
-        status: { in: ['SCHEDULED', 'OVERDUE'] },
+        status: { in: ["SCHEDULED", "OVERDUE"] },
         scheduledDate: { lte: sevenDaysFromNow },
         equipment: { isActive: true },
       },
@@ -41,41 +46,41 @@ const getPolicyMakerDashboard = async () => {
     }),
     // 2. Get list of all institutions and their individual stats
     prisma.lab.groupBy({
-      by: ['institute'],
+      by: ["institute"],
       _count: {
         _all: true, // Counts number of labs
       },
       orderBy: {
-        institute: 'asc',
+        institute: "asc",
       },
     }),
   ]);
-  
+
   // 3. Get equipment and alert counts for each institution
   const equipmentByInstitute = await prisma.equipment.groupBy({
-    by: ['lab.institute'],
+    by: ["lab.institute"],
     where: { isActive: true },
-    _count: { id: true }
+    _count: { id: true },
   });
-  
+
   const alertsByInstitute = await prisma.alert.groupBy({
-    by: ['equipment.lab.institute'],
+    by: ["equipment.lab.institute"],
     where: { isResolved: false, equipment: { isActive: true } },
     _count: { id: true },
   });
 
   // Map counts to lookups for easier merging
   const equipmentMap = equipmentByInstitute.reduce((acc, item) => {
-    acc[item['lab.institute']] = item._count.id;
+    acc[item["lab.institute"]] = item._count.id;
     return acc;
   }, {});
   const alertMap = alertsByInstitute.reduce((acc, item) => {
-    acc[item['equipment.lab.institute']] = item._count.id;
+    acc[item["equipment.lab.institute"]] = item._count.id;
     return acc;
   }, {});
 
   // 4. Combine lab counts, equipment counts, and alert counts
-  const institutions = institutionData.map(inst => ({
+  const institutions = institutionData.map((inst) => ({
     name: inst.institute,
     labCount: inst._count._all,
     equipmentCount: equipmentMap[inst.institute] || 0,
@@ -112,7 +117,7 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
     prisma.equipment.count({ where: { ...roleFilter, isActive: true } }),
     prisma.equipmentStatus.count({
       where: {
-        status: { in: ['OPERATIONAL', 'IN_USE'] },
+        status: { in: ["OPERATIONAL", "IN_USE"] },
         equipment: { ...roleFilter, isActive: true },
       },
     }),
@@ -124,7 +129,7 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
     }),
     prisma.maintenanceLog.count({
       where: {
-        status: { in: ['SCHEDULED', 'OVERDUE'] },
+        status: { in: ["SCHEDULED", "OVERDUE"] },
         scheduledDate: { lte: sevenDaysFromNow },
         equipment: { ...roleFilter, isActive: true },
       },
@@ -143,15 +148,15 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
           select: {
             equipmentId: true,
             name: true,
-            lab: { select: { name: true } }
+            lab: { select: { name: true } },
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 5,
     }),
     prisma.equipmentStatus.groupBy({
-      by: ['status'],
+      by: ["status"],
       where: { equipment: { ...roleFilter, isActive: true } },
       _count: true,
     }),
@@ -173,9 +178,7 @@ const getLabTechAndUserDashboard = async (roleFilter) => {
   };
 };
 
-
 class MonitoringController {
-  
   getRealtimeStatus = asyncHandler(async (req, res) => {
     const roleFilter = filterDataByRole(req);
     const equipmentStatus = await prisma.equipment.findMany({
@@ -184,7 +187,7 @@ class MonitoringController {
         status: true,
         lab: { select: { name: true, institute: true } },
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
     });
 
     res.json({
@@ -196,7 +199,7 @@ class MonitoringController {
         department: eq.department,
         labName: eq.lab.name,
         institute: eq.lab.institute,
-        status: eq.status?.status || 'OFFLINE',
+        status: eq.status?.status || "OFFLINE",
         healthScore: eq.status?.healthScore || 0,
         temperature: eq.status?.temperature,
         vibration: eq.status?.vibration,
@@ -218,16 +221,20 @@ class MonitoringController {
       select: { id: true },
     });
     if (!equipment) {
-        return res.status(404).json({ success: false, message: 'Equipment not found.'});
+      return res
+        .status(404)
+        .json({ success: false, message: "Equipment not found." });
     }
 
     // Check if user has access to this equipment
     const roleFilter = filterDataByRole(req);
     const hasAccess = await prisma.equipment.findFirst({
-        where: { id: equipment.id, ...roleFilter }
+      where: { id: equipment.id, ...roleFilter },
     });
     if (!hasAccess) {
-        return res.status(403).json({ success: false, message: 'Access denied to this equipment.'});
+      return res
+        .status(403)
+        .json({ success: false, message: "Access denied to this equipment." });
     }
 
     const sensorData = await prisma.sensorData.findMany({
@@ -235,7 +242,7 @@ class MonitoringController {
         equipmentId: equipment.id,
         timestamp: { gte: timeThreshold },
       },
-      orderBy: { timestamp: 'asc' },
+      orderBy: { timestamp: "asc" },
     });
 
     res.json({
@@ -260,21 +267,21 @@ class MonitoringController {
 
     const equipment = await prisma.equipment.findFirst({
       where: { equipmentId },
-      select: { 
-          id: true, 
-          name: true, 
-          labId: true, 
-          lab: { select: { institute: true } } 
-        },
+      select: {
+        id: true,
+        name: true,
+        labId: true,
+        lab: { select: { institute: true } },
+      },
     });
 
     if (!equipment) {
       return res.status(404).json({
         success: false,
-        message: 'Equipment not found.',
+        message: "Equipment not found.",
       });
     }
-    
+
     const equipmentInternalId = equipment.id;
 
     const updatedStatus = await prisma.equipmentStatus.upsert({
@@ -288,7 +295,7 @@ class MonitoringController {
       },
       create: {
         equipmentId: equipmentInternalId,
-        status: status || 'OPERATIONAL',
+        status: status || "OPERATIONAL",
         temperature,
         vibration,
         energyConsumption,
@@ -311,22 +318,22 @@ class MonitoringController {
 
     // Pass the full equipment object to checkAnomalies
     const equipmentInfo = {
-        id: equipment.id,
-        name: equipment.name,
-        labId: equipment.labId,
-        institute: equipment.lab.institute
+      id: equipment.id,
+      name: equipment.name,
+      labId: equipment.labId,
+      institute: equipment.lab.institute,
     };
 
     // Check for anomalies (async, don't block response)
     this.checkAnomalies(equipmentInfo, req.body).catch((err) => {
-      logger.error('Failed to check anomalies:', err);
+      logger.error("Failed to check anomalies:", err);
     });
 
     broadcastEquipmentStatus(equipmentInternalId, updatedStatus);
 
     res.json({
       success: true,
-      message: 'Equipment status updated successfully.',
+      message: "Equipment status updated successfully.",
       data: updatedStatus,
     });
   });
@@ -338,7 +345,12 @@ class MonitoringController {
    */
   checkAnomalies = async (equipment, sensorData) => {
     try {
-      const { id: equipmentId, name: equipmentName, labId, institute } = equipment;
+      const {
+        id: equipmentId,
+        name: equipmentName,
+        labId,
+        institute,
+      } = equipment;
       const alertsToCreate = [];
 
       // --- Anomaly Rules ---
@@ -346,7 +358,10 @@ class MonitoringController {
         alertsToCreate.push({
           equipmentId,
           type: ALERT_TYPE.HIGH_TEMPERATURE,
-          severity: sensorData.temperature > 100 ? ALERT_SEVERITY.CRITICAL : ALERT_SEVERITY.HIGH,
+          severity:
+            sensorData.temperature > 100
+              ? ALERT_SEVERITY.CRITICAL
+              : ALERT_SEVERITY.HIGH,
           title: `High Temperature: ${equipmentName}`,
           message: `Temperature reached ${sensorData.temperature}°C.`,
         });
@@ -355,7 +370,10 @@ class MonitoringController {
         alertsToCreate.push({
           equipmentId,
           type: ALERT_TYPE.ABNORMAL_VIBRATION,
-          severity: sensorData.vibration > 15 ? ALERT_SEVERITY.CRITICAL : ALERT_SEVERITY.HIGH,
+          severity:
+            sensorData.vibration > 15
+              ? ALERT_SEVERITY.CRITICAL
+              : ALERT_SEVERITY.HIGH,
           title: `Abnormal Vibration: ${equipmentName}`,
           message: `Vibration detected at ${sensorData.vibration} mm/s.`,
         });
@@ -374,7 +392,7 @@ class MonitoringController {
           isActive: true,
           OR: [
             { role: USER_ROLE_ENUM.POLICY_MAKER },
-            { role: USER_ROLE_ENUM.LAB_TECHNICIAN, institute: institute },
+            { role: USER_ROLE_ENUM.LAB_MANAGER, institute: institute },
             { role: USER_ROLE_ENUM.TRAINER, labId: labId },
           ],
         },
@@ -399,7 +417,13 @@ class MonitoringController {
           },
           include: {
             notifications: true,
-            equipment: { select: { name: true, equipmentId: true, lab: { select: { name: true }} } },
+            equipment: {
+              select: {
+                name: true,
+                equipmentId: true,
+                lab: { select: { name: true } },
+              },
+            },
           },
         });
 
@@ -410,17 +434,19 @@ class MonitoringController {
         for (const notification of newAlert.notifications) {
           broadcastNotification(notification.userId, notification);
         }
-        logger.info(`Alert created and notifications sent for equipment ${equipmentId}`);
+        logger.info(
+          `Alert created and notifications sent for equipment ${equipmentId}`
+        );
       }
     } catch (error) {
-      logger.error('Check anomalies service error:', error);
+      logger.error("Check anomalies service error:", error);
     }
   };
 
   // --- UPDATED DASHBOARD FUNCTION ---
   getDashboardOverview = asyncHandler(async (req, res) => {
     const { role } = req.user;
-    
+
     let data;
     if (role === USER_ROLE_ENUM.POLICY_MAKER) {
       // Policy Maker gets the centralized, high-level dashboard

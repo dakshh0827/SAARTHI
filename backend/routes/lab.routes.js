@@ -1,45 +1,25 @@
-import express from 'express';
-import labController from '../controllers/lab.controller.js';
-import authMiddleware from '../middlewares/auth.js';
-import { can } from '../middlewares/rbac.js';
-import { labValidation } from '../middlewares/validation.js';
+import express from "express";
+import labController from "../controllers/lab.controller.js";
+import authMiddleware from "../middlewares/auth.js";
+import { can } from "../middlewares/rbac.js";
+import { labValidation } from "../middlewares/validation.js";
 
 const router = express.Router();
 router.use(authMiddleware);
 
-// Policy Makers can create, update, delete labs.
-router.post(
-  '/',
-  can.manageLabs,
-  labValidation,
-  labController.createLab
-);
+// ONLY POLICY_MAKER can create, update, delete labs
+router.post("/", can.manageLabs, labValidation, labController.createLab);
 
-// Routes now use the public :labId string
-router.put(
-  '/:labId',
-  can.manageLabs,
-  labValidation,
-  labController.updateLab
-);
-router.delete(
-  '/:labId',
-  can.manageLabs,
-  labController.deleteLab
-);
+router.put("/:labId", can.manageLabs, labController.updateLab);
 
-// Lab Techs and Policy Makers can view labs.
-router.get(
-  '/',
-  can.viewLabs,
-  labController.getAllLabs
-);
+router.delete("/:labId", can.manageLabs, labController.deleteLab);
 
-// Route now uses the public :labId string
-router.get(
-  '/:labId',
-  can.viewLabs,
-  labController.getLabById
-);
+// LAB_MANAGER and POLICY_MAKER can view labs
+router.get("/", can.viewLabs, labController.getAllLabs);
+
+router.get("/:labId", can.viewLabs, labController.getLabById);
+
+// Get lab summary with analytics (useful for LAB_MANAGER)
+router.get("/:labId/summary", can.viewLabs, labController.getLabSummary);
 
 export default router;
