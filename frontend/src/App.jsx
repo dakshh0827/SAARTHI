@@ -1,8 +1,8 @@
 // =====================================================
-// 8. src/App.jsx
+// 8. src/App.jsx (UPDATED)
 // =====================================================
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -31,10 +31,15 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
   const { checkAuth, isLoading } = useAuthStore();
+  const hasCheckedAuth = useRef(false);
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    // Only check auth once on initial mount
+    if (!hasCheckedAuth.current) {
+      hasCheckedAuth.current = true;
+      checkAuth();
+    }
+  }, []); // Empty dependency array - only run once
 
   if (isLoading) {
     return (

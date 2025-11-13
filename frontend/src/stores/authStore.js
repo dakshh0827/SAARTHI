@@ -1,5 +1,5 @@
 // =====================================================
-// 2. src/stores/authStore.js (MODIFIED)
+// 2. src/stores/authStore.js (FIXED)
 // =====================================================
 
 import { create } from "zustand";
@@ -7,9 +7,10 @@ import api from "../lib/axios";
 
 export const useAuthStore = create((set, get) => ({
   user: null,
-  accessToken: null, // We store the access token in memory
+  accessToken: null,
   isAuthenticated: false,
-  isLoading: true, // Start as true to allow checkAuth to run
+  isLoading: true,
+  isCheckingAuth: false, // Add flag to prevent multiple checkAuth calls
 
   register: async (userData) => {
     try {
@@ -23,9 +24,7 @@ export const useAuthStore = create((set, get) => ({
   verifyEmail: async (email, otp) => {
     try {
       const response = await api.post("/auth/verify-email", { email, otp });
-      // The backend now sends 'accessToken'
       const { accessToken, user } = response.data.data;
-      // No more localStorage
       set({ user, accessToken, isAuthenticated: true });
       return response.data;
     } catch (error) {
@@ -45,9 +44,7 @@ export const useAuthStore = create((set, get) => ({
   login: async (email, password) => {
     try {
       const response = await api.post("/auth/login", { email, password });
-      // The backend now sends 'accessToken'
       const { accessToken, user } = response.data.data;
-      // No more localStorage
       set({ user, accessToken, isAuthenticated: true });
       return response.data;
     } catch (error) {
@@ -57,39 +54,68 @@ export const useAuthStore = create((set, get) => ({
 
   logout: async () => {
     try {
-      // Call the backend to clear the HttpOnly cookie
       await api.post("/auth/logout");
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {
-      // Always clear the client-side state
-      set({ user: null, accessToken: null, isAuthenticated: false });
-    }
-  },
-
-  checkAuth: async () => {
-    // This function will now try to get the user profile.
-    // The axios interceptor will handle refreshing if the token is expired.
-    set({ isLoading: true });
-    try {
-      const response = await api.get("/auth/profile");
-      // If this succeeds, the interceptor either used a valid accessToken
-      // or successfully refreshed it.
-      set({
-        user: response.data.data,
-        isAuthenticated: true,
-        isLoading: false,
-        // The token is already in state, set by the interceptor if it refreshed
-      });
-    } catch (error) {
-      // If this fails, it means the refresh token was invalid or expired
       set({
         user: null,
         accessToken: null,
         isAuthenticated: false,
-        isLoading: false,
+        isCheckingAuth: false,
       });
     }
+  },
+
+  checkAuth: async () => {
+    // Prevent multiple simultaneous checkAuth calls
+    if (get().isCheckingAuth) {
+      return;
+    }
+
+    set({ isLoading: true, isCheckingAuth: true });
+
+    try {
+      const response = await api.get("/auth/profile");
+      set({
+        user: response.data.data,
+        isAuthenticated: true,
+        isLoading: false,
+        isCheckingAuth: false,
+      });
+    } catch (error) {
+      // Only clear state if it's not a network error
+      // This prevents clearing state on temporary network issues
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        set({
+          user: null,
+          accessToken: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isCheckingAuth: false,
+        });
+      } else {
+        // For network errors, just stop loading but keep existing state
+        set({
+          isLoading: false,
+          isCheckingAuth: false,
+        });
+      }
+    }
+  },
+
+  // Method to update token (called by axios interceptor)
+  setAccessToken: (token) => {
+    set({ accessToken: token });
+  },
+
+  // Method to clear auth (called by axios interceptor on refresh failure)
+  clearAuth: () => {
+    set({
+      user: null,
+      accessToken: null,
+      isAuthenticated: false,
+    });
   },
 
   updateProfile: async (data) => {

@@ -1,20 +1,19 @@
 // =====================================================
-// src/lib/axios.js (FIXED - Proper Refresh Handling)
+// src/lib/axios.js (FIXED)
 // =====================================================
+
 import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
 const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true, // CRITICAL to send/receive cookies
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  withCredentials: true, // Important for cookies
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Flag to prevent multiple simultaneous refresh requests
+// Flag to prevent multiple simultaneous refresh attempts
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -29,7 +28,7 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Request interceptor to add auth token
+// Request interceptor - attach token to requests
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().accessToken;
@@ -41,21 +40,26 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor for handling 401 errors
+// Response interceptor - handle token refresh
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // If error is not 401 or request already retried, reject
-    if (error.response?.status !== 401 || originalRequest._retry) {
-      return Promise.reject(error);
-    }
-
-    // If the refresh endpoint itself failed, logout
-    if (originalRequest.url === "/auth/refresh") {
-      useAuthStore.getState().logout();
-      window.location.href = "/login";
+    // Don't retry for these cases:
+    // 1. Not a 401 error
+    // 2. Already retried this request
+    // 3. Request is to login, register, or refresh endpoint
+    // 4. No response from server (network error)
+    if (
+      !error.response ||
+      error.response.status !== 401 ||
+      originalRequest._retry ||
+      originalRequest.url?.includes("/auth/login") ||
+      originalRequest.url?.includes("/auth/register") ||
+      originalRequest.url?.includes("/auth/refresh") ||
+      originalRequest.url?.includes("/auth/verify-email")
+    ) {
       return Promise.reject(error);
     }
 
@@ -71,28 +75,34 @@ api.interceptors.response.use(
         .catch((err) => Promise.reject(err));
     }
 
+    // Mark this request as retried
     originalRequest._retry = true;
     isRefreshing = true;
 
     try {
-      // Call the refresh endpoint (cookie is sent automatically)
-      const refreshResponse = await api.post("/auth/refresh");
-      const { accessToken } = refreshResponse.data.data;
+      // Attempt to refresh the token
+      const response = await api.post("/auth/refresh");
+      const { accessToken } = response.data.data;
 
-      // Update the token in Zustand store
-      useAuthStore.setState({ accessToken });
+      // Update token in store
+      useAuthStore.getState().setAccessToken(accessToken);
 
-      // Process queued requests
+      // Process queued requests with new token
       processQueue(null, accessToken);
 
       // Retry original request with new token
       originalRequest.headers.Authorization = `Bearer ${accessToken}`;
       return api(originalRequest);
     } catch (refreshError) {
-      // Refresh failed, logout user
+      // Refresh failed - clear auth and reject queued requests
       processQueue(refreshError, null);
-      useAuthStore.getState().logout();
-      window.location.href = "/login";
+      useAuthStore.getState().clearAuth();
+
+      // Redirect to login if not already there
+      if (!window.location.pathname.includes("/login")) {
+        window.location.href = "/login";
+      }
+
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

@@ -3,6 +3,11 @@ import prisma from "../config/database.js";
 import { jwtConfig } from "../config/jwt.js";
 
 const authMiddleware = async (req, res, next) => {
+  // Skip auth check for refresh token endpoint
+  if (req.path === "/auth/refresh") {
+    return next();
+  }
+
   try {
     // Get token from header
     const token = req.header("Authorization")?.replace("Bearer ", "");
@@ -27,8 +32,8 @@ const authMiddleware = async (req, res, next) => {
         lastName: true,
         role: true,
         institute: true,
-        department: true, // Required for LAB_MANAGER
-        labId: true, // Required for TRAINER
+        department: true,
+        labId: true,
         isActive: true,
       },
     });
@@ -57,14 +62,12 @@ const authMiddleware = async (req, res, next) => {
         message: "Invalid token.",
       });
     }
-
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
         success: false,
         message: "Token expired.",
       });
     }
-
     return res.status(500).json({
       success: false,
       message: "Authentication error.",
