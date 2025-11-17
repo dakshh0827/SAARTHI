@@ -1,15 +1,24 @@
 /*
  * =====================================================
- * frontend/src/pages/SLDPage.jsx (NEW)
+ * frontend/src/pages/SLDPage.jsx (UPDATED)
  * =====================================================
  */
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  MarkerType,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 import { useAuthStore } from "../stores/authStore";
 import { useLabStore } from "../stores/labStore";
 import { useEquipmentStore } from "../stores/equipmentStore";
 import { useInstituteStore } from "../stores/instituteStore";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import EquipmentNode from "../components/sld/EquipmentNode";
+import EquipmentNodeComponent from "../components/sld/EquipmentNode";
 import { Filter, AlertCircle } from "lucide-react";
 
 const DEPARTMENT_DISPLAY_NAMES = {
@@ -35,6 +44,11 @@ const STATUS_COLORS = {
   WARNING: "bg-orange-500",
 };
 
+// Custom node types for ReactFlow
+const nodeTypes = {
+  equipment: EquipmentNodeComponent,
+};
+
 export default function SLDPage() {
   const { user } = useAuthStore();
   const { labs, fetchLabs, isLoading: labsLoading } = useLabStore();
@@ -45,12 +59,15 @@ export default function SLDPage() {
   const [selectedInstitute, setSelectedInstitute] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedLab, setSelectedLab] = useState("all");
-  const [gridColumns, setGridColumns] = useState(3); // Number of columns in grid
+  const [layoutType, setLayoutType] = useState("hierarchical"); // hierarchical, grid, radial
+
+  // ReactFlow states
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Policy Maker sees all institutes, Lab Manager sees only their institute
         if (user.role === "POLICY_MAKER") {
           await fetchInstitutes();
         }
@@ -67,7 +84,6 @@ export default function SLDPage() {
     if (user.role === "POLICY_MAKER") {
       return institutes;
     } else if (user.role === "LAB_MANAGER") {
-      // Lab Manager only sees their institute
       return institutes.filter(inst => inst.instituteId === user.instituteId);
     }
     return [];
@@ -75,11 +91,9 @@ export default function SLDPage() {
 
   const availableDepartments = useMemo(() => {
     if (user.role === "LAB_MANAGER") {
-      // Lab Manager only sees their department
       return [user.department];
     }
     
-    // Policy Maker sees all departments
     let filteredLabs = labs;
     if (selectedInstitute !== "all") {
       filteredLabs = labs.filter(lab => lab.instituteId === selectedInstitute);
@@ -91,12 +105,10 @@ export default function SLDPage() {
     let filteredLabs = labs;
 
     if (user.role === "LAB_MANAGER") {
-      // Lab Manager sees only labs in their department and institute
       filteredLabs = labs.filter(
         lab => lab.instituteId === user.instituteId && lab.department === user.department
       );
     } else {
-      // Policy Maker with filters
       if (selectedInstitute !== "all") {
         filteredLabs = filteredLabs.filter(lab => lab.instituteId === selectedInstitute);
       }
@@ -120,16 +132,138 @@ export default function SLDPage() {
     }
   }, [selectedLab]);
 
-  // Group equipment into rows for grid layout
-  const equipmentGrid = useMemo(() => {
-    if (!equipment.length) return [];
-    
-    const rows = [];
-    for (let i = 0; i < equipment.length; i += gridColumns) {
-      rows.push(equipment.slice(i, i + gridColumns));
+  // Generate ReactFlow nodes and edges from equipment data
+  useEffect(() => {
+    if (!selectedLabData || equipment.length === 0) {
+      setNodes([]);
+      setEdges([]);
+      return;
     }
-    return rows;
-  }, [equipment, gridColumns]);
+
+    const newNodes = [];
+    const newEdges = [];
+
+    // Main Lab Header Node
+    const headerNode = {
+      id: 'lab-header',
+      type: 'default',
+      position: { x: 400, y: 50 },
+      data: {
+        label: (
+          <div className="text-center p-4">
+            <div className="text-xl font-bold text-blue-900">{selectedLabData.name}</div>
+            <div className="text-sm text-gray-600 mt-1">
+              {selectedLabData.institute?.name || ""}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {DEPARTMENT_DISPLAY_NAMES[selectedLabData.department] || ""}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Total Equipment: {equipment.length}
+            </div>
+          </div>
+        ),
+      },
+      style: {
+        background: '#EFF6FF',
+        border: '3px solid #2563EB',
+        borderRadius: '12px',
+        width: 300,
+        fontSize: '14px',
+      },
+    };
+    newNodes.push(headerNode);
+
+    // Layout equipment nodes based on selected layout type
+    let equipmentNodes;
+    
+    if (layoutType === "hierarchical") {
+      // Hierarchical layout - rows of equipment
+      const itemsPerRow = 4;
+      equipmentNodes = equipment.map((eq, index) => {
+        const row = Math.floor(index / itemsPerRow);
+        const col = index % itemsPerRow;
+        const x = 200 + col * 300;
+        const y = 250 + row * 300;
+
+        return {
+          id: eq.id,
+          type: 'equipment',
+          position: { x, y },
+          data: { equipment: eq },
+        };
+      });
+    } else if (layoutType === "grid") {
+      // Grid layout - evenly spaced
+      const cols = Math.ceil(Math.sqrt(equipment.length));
+      equipmentNodes = equipment.map((eq, index) => {
+        const row = Math.floor(index / cols);
+        const col = index % cols;
+        const x = 150 + col * 280;
+        const y = 250 + row * 300;
+
+        return {
+          id: eq.id,
+          type: 'equipment',
+          position: { x, y },
+          data: { equipment: eq },
+        };
+      });
+    } else {
+      // Radial layout - equipment arranged in a circle
+      const radius = 400;
+      const centerX = 500;
+      const centerY = 400;
+      equipmentNodes = equipment.map((eq, index) => {
+        const angle = (index / equipment.length) * 2 * Math.PI;
+        const x = centerX + radius * Math.cos(angle) - 125;
+        const y = centerY + radius * Math.sin(angle) - 100;
+
+        return {
+          id: eq.id,
+          type: 'equipment',
+          position: { x, y },
+          data: { equipment: eq },
+        };
+      });
+    }
+
+    newNodes.push(...equipmentNodes);
+
+    // Create edges from header to all equipment
+    equipment.forEach((eq) => {
+      newEdges.push({
+        id: `edge-header-${eq.id}`,
+        source: 'lab-header',
+        target: eq.id,
+        type: 'smoothstep',
+        animated: eq.status?.status === 'IN_USE' || eq.status?.status === 'IN_CLASS',
+        style: {
+          stroke: getEdgeColor(eq.status?.status),
+          strokeWidth: 2,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: getEdgeColor(eq.status?.status),
+        },
+      });
+    });
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [equipment, selectedLabData, layoutType]);
+
+  const getEdgeColor = (status) => {
+    switch (status) {
+      case 'OPERATIONAL': return '#10B981';
+      case 'IN_USE': return '#3B82F6';
+      case 'IN_CLASS': return '#8B5CF6';
+      case 'MAINTENANCE': return '#F59E0B';
+      case 'FAULTY': return '#EF4444';
+      case 'WARNING': return '#F97316';
+      default: return '#9CA3AF';
+    }
+  };
 
   const handleInstituteChange = (e) => {
     setSelectedInstitute(e.target.value);
@@ -164,9 +298,9 @@ export default function SLDPage() {
       <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-5 h-5 text-gray-600" />
-          <h3 className="font-semibold text-gray-900">Select Lab</h3>
+          <h3 className="font-semibold text-gray-900">Select Lab & Layout</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* Institute Filter (Only for Policy Maker) */}
           {user.role === "POLICY_MAKER" && (
             <select
@@ -216,16 +350,16 @@ export default function SLDPage() {
             ))}
           </select>
 
-          {/* Grid Columns Control */}
+          {/* Layout Type */}
           <select
-            value={gridColumns}
-            onChange={(e) => setGridColumns(Number(e.target.value))}
+            value={layoutType}
+            onChange={(e) => setLayoutType(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={selectedLab === "all"}
           >
-            <option value={2}>2 Columns</option>
-            <option value={3}>3 Columns</option>
-            <option value={4}>4 Columns</option>
-            <option value={5}>5 Columns</option>
+            <option value="hierarchical">Hierarchical Layout</option>
+            <option value="grid">Grid Layout</option>
+            <option value="radial">Radial Layout</option>
           </select>
         </div>
       </div>
@@ -246,71 +380,45 @@ export default function SLDPage() {
       </div>
 
       {/* SLD Diagram */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100">
         {isLoading ? (
-          <div className="flex justify-center items-center h-96">
+          <div className="flex justify-center items-center h-[600px]">
             <LoadingSpinner size="lg" />
           </div>
         ) : selectedLab === "all" ? (
-          <div className="flex flex-col items-center justify-center h-96 text-gray-500">
+          <div className="flex flex-col items-center justify-center h-[600px] text-gray-500">
             <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
             <p className="text-lg">Please select a lab to view equipment layout</p>
           </div>
         ) : equipment.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-96 text-gray-500">
+          <div className="flex flex-col items-center justify-center h-[600px] text-gray-500">
             <AlertCircle className="w-16 h-16 text-gray-300 mb-4" />
             <p className="text-lg">No equipment found in this lab</p>
           </div>
         ) : (
-          <div className="space-y-8">
-            {/* Lab Header */}
-            <div className="text-center border-b-4 border-blue-600 pb-4">
-              <h2 className="text-3xl font-bold text-blue-900">
-                {selectedLabData?.name || "Lab"}
-              </h2>
-              <p className="text-gray-600 mt-2">
-                {selectedLabData?.institute?.name || ""} | {" "}
-                {DEPARTMENT_DISPLAY_NAMES[selectedLabData?.department] || ""}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                Total Equipment: {equipment.length}
-              </p>
-            </div>
-
-            {/* Vertical Line from Header */}
-            <div className="flex justify-center">
-              <div className="w-1 h-16 bg-gray-400"></div>
-            </div>
-
-            {/* Equipment Grid */}
-            <div className="space-y-12">
-              {equipmentGrid.map((row, rowIndex) => (
-                <div key={rowIndex}>
-                  {/* Horizontal Line */}
-                  <div className="flex justify-center mb-6">
-                    <div className="w-full h-1 bg-gray-400"></div>
-                  </div>
-
-                  {/* Equipment Row */}
-                  <div 
-                    className="grid gap-8"
-                    style={{ 
-                      gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` 
-                    }}
-                  >
-                    {row.map((eq) => (
-                      <div key={eq.id} className="flex flex-col items-center">
-                        {/* Vertical Line to Equipment */}
-                        <div className="w-1 h-12 bg-gray-400 mb-4"></div>
-                        
-                        {/* Equipment Node */}
-                        <EquipmentNode equipment={eq} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div style={{ height: '600px' }}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              nodeTypes={nodeTypes}
+              fitView
+              minZoom={0.1}
+              maxZoom={1.5}
+              defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+            >
+              <Background color="#e5e7eb" gap={16} />
+              <Controls />
+              <MiniMap 
+                nodeColor={(node) => {
+                  if (node.id === 'lab-header') return '#2563EB';
+                  const status = node.data?.equipment?.status?.status;
+                  return getEdgeColor(status);
+                }}
+                maskColor="rgba(0, 0, 0, 0.1)"
+              />
+            </ReactFlow>
           </div>
         )}
       </div>

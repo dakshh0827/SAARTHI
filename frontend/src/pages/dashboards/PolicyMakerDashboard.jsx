@@ -1,6 +1,6 @@
 /*
  * =====================================================
- * frontend/src/pages/dashboards/PolicyMakerDashboard.jsx (FIXED)
+ * frontend/src/pages/dashboards/PolicyMakerDashboard.jsx (UPDATED)
  * =====================================================
  */
 import { useEffect, useState, useMemo } from "react";
@@ -28,6 +28,7 @@ import {
   Trash2,
   BarChart2,
   Building2,
+  AlertCircle,
 } from "lucide-react";
 
 // Helper to format department names
@@ -44,7 +45,7 @@ const DEPARTMENT_DISPLAY_NAMES = {
 };
 
 export default function PolicyMakerDashboard() {
-  const { overview, fetchOverview, isLoading: dashboardLoading } = useDashboardStore();
+  const { overview, fetchOverview, isLoading: dashboardLoading, error: dashboardError } = useDashboardStore();
   const { alerts, fetchAlerts, resolveAlert } = useAlertStore();
   const {
     labs,
@@ -79,15 +80,30 @@ export default function PolicyMakerDashboard() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        await Promise.all([
+        console.log('🚀 Loading Policy Maker Dashboard data...');
+        
+        // Fetch data in parallel
+        const results = await Promise.allSettled([
           fetchOverview(),
           fetchAlerts({ isResolved: false }),
           fetchInstitutes(),
           fetchLabs(),
         ]);
+
+        // Log any failures
+        results.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            const names = ['Overview', 'Alerts', 'Institutes', 'Labs'];
+            console.error(`❌ Failed to load ${names[index]}:`, result.reason);
+          }
+        });
+
+        // Fetch filtered counts even if some data failed
         fetchFilteredCounts("all", "all", "all");
+        
+        console.log('✅ Initial data load complete');
       } catch (error) {
-        console.error("Failed to load initial data:", error);
+        console.error("❌ Failed to load initial data:", error);
       }
     };
     loadInitialData();
@@ -177,7 +193,7 @@ export default function PolicyMakerDashboard() {
     }
   };
 
-  // ✅ FIXED: Handle alert resolution with real-time updates
+  // Handle alert resolution with real-time updates
   const handleResolveAlert = async (alertId) => {
     try {
       await resolveAlert(alertId);
@@ -240,10 +256,31 @@ export default function PolicyMakerDashboard() {
 
   const isLoading = dashboardLoading || labLoading || institutesLoading;
   
-  if (isLoading && !labs.length && !institutes.length) {
+  if (isLoading && !labs.length && !institutes.length && !overview) {
     return (
       <div className="flex items-center justify-center h-96">
         <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  // Show error if dashboard failed to load
+  if (dashboardError && !overview) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Failed to Load Dashboard
+          </h2>
+          <p className="text-gray-600 mb-4">{dashboardError}</p>
+          <button
+            onClick={() => fetchOverview()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -509,7 +546,6 @@ export default function PolicyMakerDashboard() {
       {/* Alerts Section */}
       <div>
         <h2 className="text-xl font-semibold mb-4">Recent Alerts</h2>
-        {/* ✅ FIXED: Pass handleResolveAlert instead of resolveAlert directly */}
         <AlertsList 
           alerts={alerts.slice(0, 10)} 
           onResolve={handleResolveAlert} 

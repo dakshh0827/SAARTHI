@@ -69,18 +69,33 @@ api.interceptors.response.use(
 
     const status = error.response.status;
 
-    // If 401 and request already retried → fail
-    if (status === 401 && originalRequest._retry) {
-      useAuthStore.getState().clearAuth();
-      window.location.href = "/login";
+    // CRITICAL FIX: Don't redirect on auth routes to prevent infinite loops
+    const isAuthRoute = originalRequest.url.includes("/auth/");
+    
+    // If 401 on auth routes (login, register, etc.), just reject - don't redirect
+    if (status === 401 && isAuthRoute) {
+      console.log('🚫 Auth route failed with 401, not redirecting');
       return Promise.reject(error);
     }
 
-    // Skip refresh for auth routes
+    // If 401 and request already retried → fail and redirect
+    if (status === 401 && originalRequest._retry) {
+      console.log('🔄 Refresh failed, clearing auth and redirecting to login');
+      useAuthStore.getState().clearAuth();
+      // Only redirect if not already on login/signup pages
+      if (!window.location.pathname.includes('/login') && 
+          !window.location.pathname.includes('/signup') &&
+          !window.location.pathname.includes('/verify-email')) {
+        window.location.href = "/login";
+      }
+      return Promise.reject(error);
+    }
+
+    // Try to refresh token for protected routes
     if (
       status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url.includes("/auth/")
+      !isAuthRoute
     ) {
       if (isRefreshing) {
         // Queue this request
@@ -95,6 +110,7 @@ api.interceptors.response.use(
       }
 
       // Let's refresh
+      console.log('🔄 Attempting to refresh token...');
       originalRequest._retry = true;
       isRefreshing = true;
 
@@ -114,6 +130,7 @@ api.interceptors.response.use(
         );
 
         const newToken = refreshResponse.data.data.accessToken;
+        console.log('✅ Token refresh successful');
 
         // Update Zustand store
         useAuthStore.getState().setAccessToken(newToken);
@@ -126,19 +143,20 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshErr) {
         // Refresh failed
+        console.log('❌ Token refresh failed');
         processQueue(refreshErr, null);
         useAuthStore.getState().clearAuth();
-        window.location.href = "/login";
+        
+        // Only redirect if not already on login/signup pages
+        if (!window.location.pathname.includes('/login') && 
+            !window.location.pathname.includes('/signup') &&
+            !window.location.pathname.includes('/verify-email')) {
+          window.location.href = "/login";
+        }
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
       }
-    }
-
-    // For any other 401 (e.g., login expired, protected route)
-    if (status === 401) {
-      useAuthStore.getState().clearAuth();
-      window.location.href = "/login";
     }
 
     return Promise.reject(error);

@@ -1,9 +1,9 @@
 /*
  * =====================================================
- * 1. frontend/src/App.jsx
+ * frontend/src/App.jsx (FIXED - Prevent Multiple checkAuth)
  * =====================================================
  */
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -18,7 +18,6 @@ import LoginPage from "./pages/auth/LoginPage";
 import SignupPage from "./pages/auth/SignupPage";
 import VerifyEmailPage from "./pages/auth/VerifyEmailPage";
 import TrainerDashboard from "./pages/dashboards/TrainerDashboard";
-// *** UPDATED: Renamed LabTechnicianDashboard to LabManagerDashboard ***
 import LabManagerDashboard from "./pages/dashboards/LabManagerDashboard";
 import PolicyMakerDashboard from "./pages/dashboards/PolicyMakerDashboard";
 import ProfilePage from "./pages/ProfilePage";
@@ -32,18 +31,27 @@ import DashboardLayout from "./components/layout/DashboardLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
-  const { checkAuth, isLoading, isCheckingAuth } = useAuthStore();
+  const { checkAuth, isLoading, accessToken } = useAuthStore();
+  const hasCheckedAuth = useRef(false);
 
   useEffect(() => {
-    // Check auth only once on mount
-    checkAuth();
-  }, []); // Empty dependency array - checkAuth is stable
+    // CRITICAL FIX: Only check auth once on mount
+    if (!hasCheckedAuth.current) {
+      console.log('🚀 App mounted, checking auth...');
+      hasCheckedAuth.current = true;
+      checkAuth();
+    }
+  }, []); // checkAuth is stable from zustand
 
-  // Show loading only on initial check
-  if (isLoading && !isCheckingAuth) {
+  // Show loading only on initial check and when we have a token
+  // If no token, we can skip directly to rendering
+  if (isLoading && accessToken) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -88,7 +96,6 @@ function DashboardRouter() {
   switch (user.role) {
     case "TRAINER":
       return <TrainerDashboard />;
-    // *** UPDATED: Role name and component ***
     case "LAB_MANAGER":
       return <LabManagerDashboard />;
     case "POLICY_MAKER":

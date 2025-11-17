@@ -1,6 +1,6 @@
 /*
  * =====================================================
- * LabManagerDashboard.jsx - FIXED with Real-time Alerts
+ * LabManagerDashboard.jsx - FIXED with Proper Institute Loading
  * =====================================================
  */
 import { useEffect, useState } from "react";
@@ -40,7 +40,7 @@ const DEPARTMENT_DISPLAY_NAMES = {
 
 // Helper function to safely get institute name
 const getInstituteName = (institute) => {
-  if (!institute) return "Unknown Institute";
+  if (!institute) return "Loading...";
   if (typeof institute === 'string') return institute;
   if (typeof institute === 'object') {
     return institute.name || institute.instituteId || "Unknown Institute";
@@ -49,7 +49,7 @@ const getInstituteName = (institute) => {
 };
 
 export default function LabManagerDashboard() {
-  const { user } = useAuthStore();
+  const { user, checkAuth } = useAuthStore();
   const { overview, fetchOverview, isLoading: dashboardLoading } = useDashboardStore();
   const {
     equipment,
@@ -74,13 +74,35 @@ export default function LabManagerDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // ✅ FIXED: Ensure user profile (including institute) is fully loaded
+  useEffect(() => {
+    const ensureUserDataLoaded = async () => {
+      if (!user?.institute) {
+        console.log('🔄 User institute not loaded, fetching profile...');
+        try {
+          await checkAuth();
+        } catch (error) {
+          console.error('Failed to load user profile:', error);
+        }
+      }
+      setIsInitialLoad(false);
+    };
+    
+    ensureUserDataLoaded();
+  }, []);
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    // Only load dashboard data after user data is ready
+    if (!isInitialLoad && user) {
+      loadDashboardData();
+    }
+  }, [isInitialLoad, user?.id]);
 
   const loadDashboardData = async () => {
     try {
+      console.log('📊 Loading Lab Manager Dashboard data...');
       await Promise.all([
         fetchOverview(),
         fetchEquipment(),
@@ -88,8 +110,9 @@ export default function LabManagerDashboard() {
         fetchLabs(),
       ]);
       clearLabSummary();
+      console.log('✅ Dashboard data loaded successfully');
     } catch (error) {
-      console.error("Failed to load dashboard data:", error);
+      console.error("❌ Failed to load dashboard data:", error);
     }
   };
 
@@ -151,14 +174,12 @@ export default function LabManagerDashboard() {
     setEditingEquipment(null);
   };
 
-  // ✅ FIXED: Handle alert resolution with real-time updates
   const handleResolveAlert = async (alertId) => {
     try {
       await resolveAlert(alertId);
-      // Refresh alerts and overview stats immediately
       await Promise.all([
         fetchAlerts({ isResolved: false }),
-        fetchOverview(), // Update the unresolved alerts count
+        fetchOverview(),
       ]);
     } catch (error) {
       console.error("Failed to resolve alert:", error);
@@ -228,10 +249,14 @@ export default function LabManagerDashboard() {
     downloadCSV(csv, `equipment-${new Date().toISOString().split("T")[0]}.csv`);
   };
 
-  if (dashboardLoading) {
+  // Show loading while initial data is being fetched
+  if (isInitialLoad || dashboardLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <LoadingSpinner size="lg" />
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -359,7 +384,7 @@ export default function LabManagerDashboard() {
                 labs.map((lab) => (
                   <div
                     key={lab.id}
-                    className={`p-3 rounded-lg border-2 cursor-pointer ${
+                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
                       selectedLabId === lab.labId
                         ? "border-blue-500 bg-blue-50"
                         : "border-gray-100 bg-gray-50 hover:bg-gray-100"
@@ -485,7 +510,6 @@ export default function LabManagerDashboard() {
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
         <h2 className="text-xl font-semibold mb-4">Recent Alerts</h2>
-        {/* ✅ FIXED: Pass handleResolveAlert instead of resolveAlert directly */}
         <AlertsList alerts={alerts.slice(0, 5)} onResolve={handleResolveAlert} />
       </div>
 

@@ -1,5 +1,5 @@
 // =====================================================
-// src/stores/authStore.js (FIXED - Token Persistence)
+// src/stores/authStore.js (FIXED - Prevent Infinite Loop)
 // =====================================================
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -34,6 +34,15 @@ export const useAuthStore = create(
             isAuthenticated: true,
             isLoading: false 
           });
+          
+          // Fetch fresh profile data to ensure institute info is loaded
+          try {
+            const profileResponse = await api.get("/auth/profile");
+            set({ user: profileResponse.data.data });
+          } catch (profileError) {
+            console.error('Failed to fetch full profile:', profileError);
+          }
+          
           return response.data;
         } catch (error) {
           throw error.response?.data || error;
@@ -83,23 +92,38 @@ export const useAuthStore = create(
       },
 
       checkAuth: async () => {
-        // Prevent multiple simultaneous checkAuth calls
-        if (get().isCheckingAuth) {
+        // CRITICAL FIX: Prevent multiple simultaneous calls
+        const state = get();
+        
+        // If already checking auth, don't start another check
+        if (state.isCheckingAuth) {
+          console.log('⏳ checkAuth already in progress, skipping...');
           return;
         }
 
-        // If we have a token, we're likely authenticated
-        // Skip loading state to prevent UI flicker
-        const hasToken = !!get().accessToken;
+        // If we have no token, don't bother checking - just set unauthenticated
+        if (!state.accessToken) {
+          console.log('🔓 No access token found, setting unauthenticated state');
+          set({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            isCheckingAuth: false,
+          });
+          return;
+        }
+
+        console.log('🔍 Starting checkAuth...');
         
         set({ 
-          isLoading: !hasToken, // Only show loading if no token
+          isLoading: true,
           isCheckingAuth: true 
         });
 
         try {
           const response = await api.get("/auth/profile");
           
+          console.log('✅ checkAuth successful');
           set({
             user: response.data.data,
             isAuthenticated: true,
@@ -107,6 +131,8 @@ export const useAuthStore = create(
             isCheckingAuth: false,
           });
         } catch (error) {
+          console.log('❌ checkAuth failed:', error.response?.status);
+          
           // Only clear auth on actual auth errors (401, 403)
           if (error.response?.status === 401 || error.response?.status === 403) {
             set({
@@ -134,11 +160,13 @@ export const useAuthStore = create(
 
       // Called by axios interceptor when refresh fails
       clearAuth: () => {
+        console.log('🧹 Clearing auth state');
         set({
           user: null,
           accessToken: null,
           isAuthenticated: false,
           isCheckingAuth: false,
+          isLoading: false,
         });
       },
 
@@ -165,7 +193,7 @@ export const useAuthStore = create(
       },
     }),
     {
-      name: "auth-storage", // name of item in localStorage
+      name: "auth-storage",
       partialize: (state) => ({
         // Only persist these fields
         accessToken: state.accessToken,

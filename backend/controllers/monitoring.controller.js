@@ -26,207 +26,232 @@ const asyncHandler = (fn) => (req, res, next) => {
  * Gets the high-level, centralized dashboard for Policy Makers.
  */
 const getPolicyMakerDashboard = async () => {
-  const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  try {
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  // 1. Get high-level overview stats
-  const [
-    totalEquipment,
-    unresolvedAlerts,
-    maintenanceDue,
-    avgHealthScore,
-    institutionData,
-  ] = await Promise.all([
-    prisma.equipment.count({ where: { isActive: true } }),
-    prisma.alert.count({ where: { isResolved: false } }),
-    prisma.maintenanceLog.count({
-      where: {
-        status: { in: ["SCHEDULED", "OVERDUE"] },
-        scheduledDate: { lte: sevenDaysFromNow },
-        equipment: { isActive: true },
-      },
-    }),
-    prisma.equipmentStatus.aggregate({
-      _avg: { healthScore: true },
-      where: { equipment: { isActive: true } },
-    }),
-    // FIXED: Group by instituteId instead of institute
-    prisma.lab.groupBy({
-      by: ["instituteId"],
-      where: {
-        instituteId: { not: null }, // Exclude null instituteIds
-      },
-      _count: {
-        _all: true, // Counts number of labs
-      },
-      orderBy: {
-        instituteId: "asc",
-      },
-    }),
-  ]);
+    logger.info('📊 Fetching Policy Maker Dashboard data...');
 
-  // 2. Get equipment counts for each institute
-  const labsWithEquipment = await prisma.lab.findMany({
-    where: {
-      instituteId: { not: null },
-    },
-    select: {
-      instituteId: true,
-      institute: {
-        select: {
-          name: true,
-        },
-      },
-      _count: {
-        select: { equipments: { where: { isActive: true } } },
-      },
-    },
-  });
-
-  const equipmentMap = labsWithEquipment.reduce((acc, lab) => {
-    acc[lab.instituteId] = (acc[lab.instituteId] || 0) + lab._count.equipments;
-    return acc;
-  }, {});
-
-  // 3. Get alert counts for each institute
-  const labsWithAlerts = await prisma.lab.findMany({
-    where: {
-      instituteId: { not: null },
-    },
-    select: {
-      instituteId: true,
-      equipments: {
-        select: {
-          _count: {
-            select: { alerts: { where: { isResolved: false } } },
-          },
-        },
-      },
-    },
-  });
-
-  const alertMap = labsWithAlerts.reduce((acc, lab) => {
-    const alertCount = lab.equipments.reduce(
-      (sum, eq) => sum + eq._count.alerts,
-      0
-    );
-    acc[lab.instituteId] = (acc[lab.instituteId] || 0) + alertCount;
-    return acc;
-  }, {});
-
-  // 4. Get institute names
-  const institutes = await prisma.institute.findMany({
-    where: {
-      instituteId: { in: institutionData.map(i => i.instituteId) },
-    },
-    select: {
-      instituteId: true,
-      name: true,
-    },
-  });
-
-  const instituteNameMap = institutes.reduce((acc, inst) => {
-    acc[inst.instituteId] = inst.name;
-    return acc;
-  }, {});
-
-  // 5. Combine lab counts, equipment counts, and alert counts
-  const institutionsData = institutionData.map((inst) => ({
-    name: instituteNameMap[inst.instituteId] || inst.instituteId,
-    instituteId: inst.instituteId,
-    labCount: inst._count._all,
-    equipmentCount: equipmentMap[inst.instituteId] || 0,
-    unresolvedAlerts: alertMap[inst.instituteId] || 0,
-  }));
-
-  return {
-    overview: {
-      totalInstitutions: institutionsData.length,
+    // 1. Get high-level overview stats
+    const [
       totalEquipment,
       unresolvedAlerts,
       maintenanceDue,
-      avgHealthScore: Math.round(avgHealthScore._avg.healthScore || 0),
-    },
-    institutions: institutionsData,
-  };
+      avgHealthScore,
+      totalInstitutes,
+    ] = await Promise.all([
+      prisma.equipment.count({ where: { isActive: true } }),
+      prisma.alert.count({ where: { isResolved: false } }),
+      prisma.maintenanceLog.count({
+        where: {
+          status: { in: ["SCHEDULED", "OVERDUE"] },
+          scheduledDate: { lte: sevenDaysFromNow },
+          equipment: { isActive: true },
+        },
+      }),
+      prisma.equipmentStatus.aggregate({
+        _avg: { healthScore: true },
+        where: { equipment: { isActive: true } },
+      }),
+      prisma.institute.count(),
+    ]);
+
+    logger.info(`✅ Basic stats fetched: ${totalEquipment} equipment, ${unresolvedAlerts} alerts`);
+
+    // 2. Get all institutes with their labs
+    const institutes = await prisma.institute.findMany({
+      select: {
+        id: true,
+        instituteId: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    logger.info(`✅ Found ${institutes.length} institutes`);
+
+    // 3. Get lab counts per institute
+    const labCounts = await prisma.lab.groupBy({
+      by: ["instituteId"],
+      _count: {
+        _all: true,
+      },
+    });
+
+    const labCountMap = labCounts.reduce((acc, item) => {
+      acc[item.instituteId] = item._count._all;
+      return acc;
+    }, {});
+
+    logger.info('✅ Lab counts calculated');
+
+    // 4. Get equipment counts per institute
+    const equipmentByInstitute = await prisma.equipment.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        lab: {
+          select: {
+            instituteId: true,
+          },
+        },
+      },
+    });
+
+    const equipmentCountMap = equipmentByInstitute.reduce((acc, eq) => {
+      const instId = eq.lab?.instituteId;
+      if (instId) {
+        acc[instId] = (acc[instId] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    logger.info('✅ Equipment counts calculated');
+
+    // 5. Get alert counts per institute
+    const alertsByInstitute = await prisma.alert.findMany({
+      where: {
+        isResolved: false,
+      },
+      select: {
+        equipment: {
+          select: {
+            lab: {
+              select: {
+                instituteId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const alertCountMap = alertsByInstitute.reduce((acc, alert) => {
+      const instId = alert.equipment?.lab?.instituteId;
+      if (instId) {
+        acc[instId] = (acc[instId] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    logger.info('✅ Alert counts calculated');
+
+    // 6. Combine all data
+    const institutionsData = institutes.map((inst) => ({
+      name: inst.name,
+      instituteId: inst.instituteId,
+      labCount: labCountMap[inst.instituteId] || 0,
+      equipmentCount: equipmentCountMap[inst.instituteId] || 0,
+      unresolvedAlerts: alertCountMap[inst.instituteId] || 0,
+    }));
+
+    const result = {
+      overview: {
+        totalInstitutions: totalInstitutes,
+        totalEquipment,
+        unresolvedAlerts,
+        maintenanceDue,
+        avgHealthScore: Math.round(avgHealthScore._avg.healthScore || 0),
+      },
+      institutions: institutionsData,
+    };
+
+    logger.info('✅ Policy Maker Dashboard data compiled successfully');
+    return result;
+  } catch (error) {
+    logger.error('❌ Error in getPolicyMakerDashboard:', error);
+    throw error;
+  }
 };
 
 /**
  * Gets the institute-specific dashboard for Lab Managers and Trainers.
  */
 const getLabTechAndUserDashboard = async (roleFilter) => {
-  const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  try {
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  const [
-    totalEquipment,
-    activeEquipment,
-    unresolvedAlerts,
-    maintenanceDue,
-    avgHealthScore,
-    recentAlerts,
-    equipmentByStatus,
-  ] = await Promise.all([
-    prisma.equipment.count({ where: { ...roleFilter, isActive: true } }),
-    prisma.equipmentStatus.count({
-      where: {
-        status: { in: ["OPERATIONAL", "IN_USE"] },
-        equipment: { ...roleFilter, isActive: true },
-      },
-    }),
-    prisma.alert.count({
-      where: {
-        isResolved: false,
-        equipment: roleFilter,
-      },
-    }),
-    prisma.maintenanceLog.count({
-      where: {
-        status: { in: ["SCHEDULED", "OVERDUE"] },
-        scheduledDate: { lte: sevenDaysFromNow },
-        equipment: { ...roleFilter, isActive: true },
-      },
-    }),
-    prisma.equipmentStatus.aggregate({
-      _avg: { healthScore: true },
-      where: { equipment: { ...roleFilter, isActive: true } },
-    }),
-    prisma.alert.findMany({
-      where: {
-        isResolved: false,
-        equipment: roleFilter,
-      },
-      include: {
-        equipment: {
-          select: {
-            equipmentId: true,
-            name: true,
-            lab: { select: { name: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-    }),
-    prisma.equipmentStatus.groupBy({
-      by: ["status"],
-      where: { equipment: { ...roleFilter, isActive: true } },
-      _count: true,
-    }),
-  ]);
+    logger.info('📊 Fetching Lab Manager/Trainer Dashboard data...');
 
-  return {
-    overview: {
+    const [
       totalEquipment,
       activeEquipment,
       unresolvedAlerts,
       maintenanceDue,
-      avgHealthScore: Math.round(avgHealthScore._avg.healthScore || 0),
-    },
-    recentAlerts,
-    equipmentByStatus: equipmentByStatus.map((s) => ({
-      status: s.status,
-      count: s._count,
-    })),
-  };
+      avgHealthScore,
+      recentAlerts,
+      equipmentByStatus,
+    ] = await Promise.all([
+      prisma.equipment.count({ where: { ...roleFilter, isActive: true } }),
+      prisma.equipmentStatus.count({
+        where: {
+          status: { in: ["OPERATIONAL", "IN_USE"] },
+          equipment: { ...roleFilter, isActive: true },
+        },
+      }),
+      prisma.alert.count({
+        where: {
+          isResolved: false,
+          equipment: roleFilter,
+        },
+      }),
+      prisma.maintenanceLog.count({
+        where: {
+          status: { in: ["SCHEDULED", "OVERDUE"] },
+          scheduledDate: { lte: sevenDaysFromNow },
+          equipment: { ...roleFilter, isActive: true },
+        },
+      }),
+      prisma.equipmentStatus.aggregate({
+        _avg: { healthScore: true },
+        where: { equipment: { ...roleFilter, isActive: true } },
+      }),
+      prisma.alert.findMany({
+        where: {
+          isResolved: false,
+          equipment: roleFilter,
+        },
+        include: {
+          equipment: {
+            select: {
+              equipmentId: true,
+              name: true,
+              lab: { select: { name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.equipmentStatus.groupBy({
+        by: ["status"],
+        where: { equipment: { ...roleFilter, isActive: true } },
+        _count: true,
+      }),
+    ]);
+
+    logger.info('✅ Lab Manager/Trainer Dashboard data compiled successfully');
+
+    return {
+      overview: {
+        totalEquipment,
+        activeEquipment,
+        unresolvedAlerts,
+        maintenanceDue,
+        avgHealthScore: Math.round(avgHealthScore._avg.healthScore || 0),
+      },
+      recentAlerts,
+      equipmentByStatus: equipmentByStatus.map((s) => ({
+        status: s.status,
+        count: s._count,
+      })),
+    };
+  } catch (error) {
+    logger.error('❌ Error in getLabTechAndUserDashboard:', error);
+    throw error;
+  }
 };
 
 class MonitoringController {
@@ -495,20 +520,33 @@ class MonitoringController {
   };
 
   getDashboardOverview = asyncHandler(async (req, res) => {
-    const { role } = req.user;
+    try {
+      const { role } = req.user;
+      
+      logger.info(`📊 Dashboard overview requested by user role: ${role}`);
 
-    let data;
-    if (role === USER_ROLE_ENUM.POLICY_MAKER) {
-      data = await getPolicyMakerDashboard();
-    } else {
-      const roleFilter = filterDataByRole(req);
-      data = await getLabTechAndUserDashboard(roleFilter);
+      let data;
+      if (role === USER_ROLE_ENUM.POLICY_MAKER) {
+        data = await getPolicyMakerDashboard();
+      } else {
+        const roleFilter = filterDataByRole(req);
+        data = await getLabTechAndUserDashboard(roleFilter);
+      }
+
+      logger.info('✅ Dashboard overview fetched successfully');
+
+      res.json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      logger.error('❌ Error in getDashboardOverview:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch dashboard overview',
+        error: error.message,
+      });
     }
-
-    res.json({
-      success: true,
-      data,
-    });
   });
 }
 
