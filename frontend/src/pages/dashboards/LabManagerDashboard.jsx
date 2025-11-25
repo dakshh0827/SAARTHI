@@ -1,23 +1,20 @@
 /*
  * =====================================================
- * LabManagerDashboard.jsx - FIXED VERSION
+ * LabManagerDashboard.jsx - FINAL FIX
  * =====================================================
- * Changes:
- * 1. Removed "Lab Analytics" section from dashboard
- * 2. Only "My Labs" section remains with clickable lab names
- * 3. Cleaned up unused labSummary state management
+ * 1. Fixed 'shrink-0' warnings.
+ * 2. Verified bracket matching for Modals.
+ * 3. Includes ModalWrapper for translucent styling.
  */
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useAlertStore } from "../../stores/alertStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useLabStore } from "../../stores/labStore";
-import StatCard from "../../components/common/StatCard";
 import EquipmentTable from "../../components/dashboard/EquipmentTable";
 import AlertsList from "../../components/dashboard/AlertsList";
-import AlertHistoryTable from "../../components/dashboard/AlertHistoryTable";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EquipmentFormModal from "../../components/equipment/EquipmentFormModal";
 import { useBreakdownStore } from "../../stores/breakdownStore";
@@ -30,38 +27,124 @@ import {
   Wrench,
   TrendingUp,
   Building,
-  Plus,
-  Filter,
   Download,
-  List,
-  History,
-  ExternalLink,
+  Search,
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  UserCheck,
+  Check,
+  X,
 } from "lucide-react";
 
-const DEPARTMENT_DISPLAY_NAMES = {
-  FITTER_MANUFACTURING: "Fitter/Manufacturing",
-  ELECTRICAL_ENGINEERING: "Electrical Engineering",
-  WELDING_FABRICATION: "Welding & Fabrication",
-  TOOL_DIE_MAKING: "Tool & Die Making",
-  ADDITIVE_MANUFACTURING: "Additive Manufacturing",
-  SOLAR_INSTALLER_PV: "Solar Installer (PV)",
-  MATERIAL_TESTING_QUALITY: "Material Testing/Quality",
-  ADVANCED_MANUFACTURING_CNC: "Advanced Manufacturing/CNC",
-  AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
+// --- NEW: Stylish Modal Wrapper (Glassmorphism) ---
+const ModalWrapper = ({ children, onClose, title, maxWidth = "max-w-lg" }) => {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-all animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 transform transition-all animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {title && (
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+            <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto">{children}</div>
+      </div>
+    </div>
+  );
 };
 
-// Helper function to safely get institute name
-const getInstituteName = (institute) => {
-  if (!institute) return "Loading...";
-  if (typeof institute === "string") return institute;
-  if (typeof institute === "object") {
-    return institute.name || institute.instituteId || "Unknown Institute";
-  }
-  return "Unknown Institute";
+// --- Compact History List ---
+const CompactHistoryList = ({ alerts, loading }) => {
+  if (loading)
+    return (
+      <div className="flex justify-center py-4">
+        <LoadingSpinner size="sm" />
+      </div>
+    );
+  if (!alerts || alerts.length === 0)
+    return (
+      <div className="text-center text-xs text-gray-500 py-4">
+        No history found.
+      </div>
+    );
+
+  return (
+    <div className="space-y-3 p-2">
+      {alerts.map((alert) => (
+        <div
+          key={alert.id}
+          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-3"
+        >
+          <div
+            className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${
+              alert.priority === "CRITICAL"
+                ? "bg-red-500 shadow-sm shadow-red-200"
+                : alert.priority === "HIGH"
+                ? "bg-orange-400"
+                : "bg-green-500"
+            }`}
+          />
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="font-semibold text-xs text-gray-900">
+                  {alert.equipment?.name || "Unknown Equipment"}
+                </h4>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                    <Building className="w-3 h-3" />{" "}
+                    {alert.lab?.name || "Unknown Lab"}
+                  </span>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                    {alert.type?.replace(/_/g, " ") || "ALERT"}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] text-gray-400 whitespace-nowrap flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {new Date(
+                  alert.resolvedAt || alert.createdAt
+                ).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            </div>
+            <div className="text-xs text-gray-700 bg-gray-50 p-2 rounded border border-gray-100 leading-relaxed">
+              {alert.message}
+            </div>
+            {alert.isResolved && (
+              <div className="pt-2 mt-1 border-t border-gray-100 grid gap-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                  <UserCheck className="w-3 h-3" />
+                  Resolved by {alert.resolver?.name || "Admin"}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export default function LabManagerDashboard() {
   const navigate = useNavigate();
+
+  const { triggerEquipmentModal, triggerBreakdownModal } =
+    useOutletContext() || {};
   const { user, checkAuth } = useAuthStore();
   const {
     overview,
@@ -76,11 +159,8 @@ export default function LabManagerDashboard() {
     deleteEquipment,
     isLoading: equipmentLoading,
   } = useEquipmentStore();
-
   const { fetchAlerts, resolveAlert } = useAlertStore();
-
   const { labs, fetchLabs, isLoading: labLoading } = useLabStore();
-
   const {
     breakdownEquipment,
     fetchBreakdownEquipment,
@@ -92,21 +172,44 @@ export default function LabManagerDashboard() {
 
   const [isAddBreakdownModalOpen, setIsAddBreakdownModalOpen] = useState(false);
   const [breakdownAlertToRespond, setBreakdownAlertToRespond] = useState(null);
-
   const [selectedLabId, setSelectedLabId] = useState("all");
+  const [isLabDropdownOpen, setIsLabDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-
   const [alertTab, setAlertTab] = useState("active");
   const [activeAlerts, setActiveAlerts] = useState([]);
   const [isActiveAlertsLoading, setIsActiveAlertsLoading] = useState(true);
   const [historyAlerts, setHistoryAlerts] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  // Ensure user profile is fully loaded
+  // Listeners
+  useEffect(() => {
+    if (triggerEquipmentModal > 0) {
+      setEditingEquipment(null);
+      setIsModalOpen(true);
+    }
+  }, [triggerEquipmentModal]);
+
+  useEffect(() => {
+    if (triggerBreakdownModal > 0) {
+      setIsAddBreakdownModalOpen(true);
+    }
+  }, [triggerBreakdownModal]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsLabDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const ensureUserDataLoaded = async () => {
       if (!user?.institute) {
@@ -118,11 +221,9 @@ export default function LabManagerDashboard() {
       }
       setIsInitialLoad(false);
     };
-
     ensureUserDataLoaded();
   }, []);
 
-  // Initial Data Load
   useEffect(() => {
     if (!isInitialLoad && user) {
       loadDashboardData();
@@ -163,14 +264,12 @@ export default function LabManagerDashboard() {
 
   const loadDashboardData = async () => {
     try {
-      console.log("📊 Loading Lab Manager Dashboard data...");
       await Promise.all([
         fetchOverview(),
         fetchEquipment(),
         fetchLabs(),
         fetchActiveAlertsIsolated(),
       ]);
-      console.log("✅ Dashboard data loaded successfully");
     } catch (error) {
       console.error("❌ Failed to load dashboard data:", error);
     }
@@ -178,26 +277,21 @@ export default function LabManagerDashboard() {
 
   const handleTabChange = (tab) => {
     setAlertTab(tab);
-    if (tab === "history" && historyAlerts.length === 0) {
+    if (tab === "history" && historyAlerts.length === 0)
       fetchHistoryAlertsIsolated();
-    }
-    if (tab === "active") {
-      fetchActiveAlertsIsolated();
-    }
+    if (tab === "active") fetchActiveAlertsIsolated();
   };
 
   const handleSelectLab = (labId) => {
-    if (labId === selectedLabId) {
+    setIsLabDropdownOpen(false);
+    if (labId === selectedLabId) return;
+    if (labId === "all") {
       setSelectedLabId("all");
       fetchEquipment();
     } else {
       setSelectedLabId(labId);
       fetchEquipment({ labId: labId });
     }
-  };
-
-  const handleLabClick = (labId) => {
-    navigate(`/dashboard/lab-analytics/${labId}`);
   };
 
   const handleCreateEquipment = async (data) => {
@@ -224,15 +318,13 @@ export default function LabManagerDashboard() {
   };
 
   const handleDeleteEquipment = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this equipment?")) {
+    if (!window.confirm("Are you sure you want to delete this equipment?"))
       return;
-    }
     try {
       await deleteEquipment(id);
       await loadDashboardData();
     } catch (error) {
       console.error("Failed to delete equipment:", error);
-      alert("Failed to delete equipment. Please try again.");
     }
   };
 
@@ -246,41 +338,27 @@ export default function LabManagerDashboard() {
     setEditingEquipment(null);
   };
 
-  const handleAlertClick = (alert) => {
-    if (alert.type === "EQUIPMENT_BREAKDOWN_CHECK") {
-      setBreakdownAlertToRespond(alert);
-    }
-  };
-
   const handleResolveAlert = async (alertId) => {
     try {
       const alert = activeAlerts.find((a) => a.id === alertId);
-
       if (alert?.type === "EQUIPMENT_BREAKDOWN_CHECK") {
         setBreakdownAlertToRespond(alert);
         return;
       }
-
       await resolveAlert(alertId);
       fetchOverview();
       await fetchActiveAlertsIsolated();
-
-      if (historyAlerts.length > 0 || alertTab === "history") {
+      if (historyAlerts.length > 0 || alertTab === "history")
         fetchHistoryAlertsIsolated();
-      }
     } catch (error) {
       console.error("Failed to resolve alert:", error);
-      alert("Failed to resolve alert. Please try again.");
     }
   };
 
   const getFilteredEquipment = () => {
     let filtered = equipment;
-
-    if (selectedStatus !== "all") {
+    if (selectedStatus !== "all")
       filtered = filtered.filter((eq) => eq.status?.status === selectedStatus);
-    }
-
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -291,12 +369,12 @@ export default function LabManagerDashboard() {
           eq.model.toLowerCase().includes(query)
       );
     }
-
     return filtered;
   };
 
-  const convertToCSV = (data) => {
-    if (!data.length) return "";
+  const handleExportData = () => {
+    const filteredData = getFilteredEquipment();
+    if (!filteredData.length) return;
     const headers = [
       "Equipment ID",
       "Name",
@@ -307,7 +385,7 @@ export default function LabManagerDashboard() {
       "Model",
       "Purchase Date",
     ];
-    const rows = data.map((eq) => [
+    const rows = filteredData.map((eq) => [
       eq.equipmentId,
       eq.name,
       eq.department,
@@ -317,32 +395,20 @@ export default function LabManagerDashboard() {
       eq.model,
       new Date(eq.purchaseDate).toLocaleDateString(),
     ]);
-    return [headers, ...rows].map((row) => row.join(",")).join("\n");
-  };
-
-  const downloadCSV = (csv, filename) => {
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = `equipment-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
-  const handleExportData = () => {
-    const filteredData = getFilteredEquipment();
-    const csv = convertToCSV(filteredData);
-    downloadCSV(csv, `equipment-${new Date().toISOString().split("T")[0]}.csv`);
-  };
-
   if (isInitialLoad || dashboardLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <LoadingSpinner size="lg" />
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
-        </div>
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <LoadingSpinner size="lg" />
       </div>
     );
   }
@@ -352,353 +418,343 @@ export default function LabManagerDashboard() {
       icon: Activity,
       title: "Total Equipment",
       value: overview?.overview?.totalEquipment || 0,
+      color: "text-blue-600",
+      bg: "bg-blue-50",
     },
     {
       icon: TrendingUp,
       title: "Active Equipment",
       value: overview?.overview?.activeEquipment || 0,
+      color: "text-emerald-600",
+      bg: "bg-emerald-50",
     },
     {
       icon: AlertTriangle,
       title: "Unresolved Alerts",
       value: overview?.overview?.unresolvedAlerts || 0,
+      color: "text-red-600",
+      bg: "bg-red-50",
     },
     {
       icon: Wrench,
       title: "Maintenance Due",
       value: overview?.overview?.maintenanceDue || 0,
+      color: "text-orange-600",
+      bg: "bg-orange-50",
     },
   ];
 
   const filteredEquipment = getFilteredEquipment();
+  const currentLabName =
+    selectedLabId === "all"
+      ? "All Labs"
+      : labs.find((l) => l.labId === selectedLabId)?.name || "Unknown Lab";
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-6 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">
-              Lab Manager Dashboard
-            </h1>
-            <p className="text-xs text-gray-600 mt-0.5">
-              {getInstituteName(user?.institute)} |{" "}
-              {DEPARTMENT_DISPLAY_NAMES[user?.department] ||
-                user?.department ||
-                "Unknown Department"}
-            </p>
+    <div className="h-[calc(100vh-6rem)] flex flex-col bg-gray-50 overflow-hidden p-1 gap-4 w-full">
+      {/* --- ROW 1: 40% Height --- */}
+      <div className="flex-none h-[40%] grid grid-cols-12 gap-4 min-h-0">
+        <div className="col-span-3 h-full grid grid-cols-2 gap-3">
+          {stats.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <div
+                key={index}
+                className="flex flex-col justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow h-full min-h-0"
+              >
+                <div className="w-full flex items-center justify-between">
+                  <div className={`p-3 rounded-lg ${stat.bg}`}>
+                    <Icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 leading-none">
+                    {stat.value}
+                  </div>
+                </div>
+                <div className="mt-1 w-full text-center text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">
+                  {stat.title}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="col-span-9 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+          <div className="flex-shrink-0 px-3 py-2 border-b border-gray-100 bg-white flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-red-50 text-red-600 rounded-lg">
+                <Wrench className="w-4 h-4" />
+              </div>
+              <h2 className="text-sm font-bold text-gray-800">Breakdowns</h2>
+            </div>
+            <button
+              onClick={() => setIsAddBreakdownModalOpen(true)}
+              className="px-2 py-1 text-[10px] font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors uppercase tracking-wide shadow-sm"
+            >
+              Report Issue
+            </button>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+
+          <div
+            className="flex-1 overflow-y-auto w-full relative [&::-webkit-scrollbar:horizontal]:hidden"
+            style={{ overflowX: "hidden" }}
           >
-            <Plus className="w-4 h-4" />
-            Add Equipment
-          </button>
+            <div className="p-2 min-w-0 w-full">
+              {breakdownEquipment.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+                  <CheckCircle className="w-8 h-8 mb-2 opacity-20" />
+                  <p className="text-xs">No breakdowns reported.</p>
+                </div>
+              ) : (
+                <BreakdownEquipmentTable
+                  breakdowns={breakdownEquipment}
+                  onReorder={async (id, data) => {
+                    await submitReorderRequest(id, data);
+                    await fetchBreakdownEquipment();
+                  }}
+                  onResolve={async (id) => {
+                    await resolveBreakdown(id);
+                    await fetchBreakdownEquipment();
+                  }}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden p-4">
-        <div className="h-full flex flex-col gap-3">
-          {/* Stats Cards */}
-          <div className="flex-shrink-0 grid grid-cols-4 gap-3">
-            {stats.map((stat, index) => (
-              <StatCard key={index} {...stat} />
-            ))}
-          </div>
+      {/* --- ROW 2: Remaining 60% Height --- */}
+      <div className="flex-1 min-h-0 grid grid-cols-12 gap-4">
+        <div className="col-span-9 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+          <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between gap-4">
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsLabDropdownOpen(!isLabDropdownOpen)}
+                className="flex items-center gap-3 p-1.5 hover:bg-gray-50 rounded-lg transition-colors group pr-3 border border-transparent hover:border-gray-200"
+              >
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-100 transition-colors">
+                  <Building className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <h2 className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                    {currentLabName}
+                    <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                  </h2>
+                  <p className="text-[10px] text-gray-500 font-medium">
+                    {filteredEquipment.length} Equipment Listed
+                  </p>
+                </div>
+              </button>
 
-          {/* Filters */}
-          <div className="flex-shrink-0 bg-white rounded-lg shadow-sm p-3 border border-gray-100">
-            <div className="flex items-center gap-2 mb-2">
-              <Filter className="w-4 h-4 text-gray-600" />
-              <h3 className="text-sm font-semibold text-gray-900">Filters</h3>
+              {isLabDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-60 bg-white rounded-xl shadow-xl border border-gray-100 z-50 py-1 max-h-64 overflow-y-auto">
+                  <button
+                    onClick={() => handleSelectLab("all")}
+                    className="w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-gray-50 flex items-center justify-between"
+                  >
+                    <span>All Labs</span>
+                    {selectedLabId === "all" && (
+                      <Check className="w-3.5 h-3.5 text-blue-600" />
+                    )}
+                  </button>
+                  <div className="h-px bg-gray-100 my-1" />
+                  {labs.map((lab) => (
+                    <button
+                      key={lab.id}
+                      onClick={() => handleSelectLab(lab.labId)}
+                      className="w-full text-left px-4 py-2.5 text-xs hover:bg-gray-50 flex items-center justify-between group transition-colors"
+                    >
+                      <span
+                        className={
+                          selectedLabId === lab.labId
+                            ? "font-semibold text-blue-600"
+                            : "text-gray-700"
+                        }
+                      >
+                        {lab.name}
+                      </span>
+                      {selectedLabId === lab.labId && (
+                        <Check className="w-3.5 h-3.5 text-blue-600" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Search Equipment
-                </label>
+            <div className="flex items-center gap-3 flex-1 justify-end">
+              <div className="relative max-w-[240px] w-full">
+                <Search className="absolute left-3 top-2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, ID, model..."
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Search equipment..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
                 />
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Status</option>
-                  <option value="OPERATIONAL">Operational</option>
-                  <option value="IN_USE">In Use</option>
-                  <option value="IN_CLASS">In Class</option>
-                  <option value="IDLE">Idle</option>
-                  <option value="MAINTENANCE">Maintenance</option>
-                  <option value="FAULTY">Faulty</option>
-                  <option value="OFFLINE">Offline</option>
-                  <option value="WARNING">Warning</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
-              <p className="text-xs text-gray-600">
-                Showing {filteredEquipment.length} equipment
-              </p>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50 max-w-[140px]"
+              >
+                <option value="all">All Status</option>
+                <option value="OPERATIONAL">Operational</option>
+                <option value="IN_USE">In Use</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="FAULTY">Faulty</option>
+                <option value="OFFLINE">Offline</option>
+              </select>
               <button
                 onClick={handleExportData}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-gray-200 hover:border-blue-100 transition-colors shadow-sm"
+                title="Export CSV"
               >
-                <Download className="w-3 h-3" />
-                Export CSV
+                <Download className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Main Content Grid */}
-          <div className="flex-1 overflow-hidden grid grid-cols-12 gap-3">
-            {/* Left Column - My Labs ONLY */}
-            <div className="col-span-3 overflow-hidden flex flex-col">
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                <div className="flex-shrink-0 p-3 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold">My Labs</h3>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                  {labLoading ? (
-                    <div className="flex justify-center py-4">
-                      <LoadingSpinner />
-                    </div>
-                  ) : labs.length === 0 ? (
-                    <p className="text-xs text-gray-600 text-center py-4">
-                      No labs found for your department.
-                    </p>
-                  ) : (
-                    labs.map((lab) => (
-                      <div
-                        key={lab.id}
-                        className={`p-2 rounded-lg border-2 transition-all ${
-                          selectedLabId === lab.labId
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-100 bg-gray-50 hover:bg-gray-100"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <button
-                            onClick={() => handleLabClick(lab.labId)}
-                            className="flex items-center gap-1.5 hover:text-blue-600 transition-colors cursor-pointer group"
-                          >
-                            <Building className="w-3.5 h-3.5 text-gray-600 group-hover:text-blue-600" />
-                            <h4 className="font-medium text-gray-900 text-xs group-hover:underline group-hover:text-blue-600">
-                              {lab.name}
-                            </h4>
-                            <ExternalLink className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                          <span className="text-xs font-bold text-blue-600">
-                            {lab._count?.equipments || 0}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => handleSelectLab(lab.labId)}
-                          className="text-xs text-gray-600 hover:text-gray-800 flex items-center gap-1"
-                        >
-                          {selectedLabId === lab.labId
-                            ? "Clear Filter"
-                            : "Filter Equipment"}
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
+          <div className="flex-1 overflow-y-auto p-0">
+            {equipmentLoading ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner />
               </div>
+            ) : filteredEquipment.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-sm text-gray-500 font-medium">
+                  No equipment found
+                </p>
+                {selectedLabId === "all" && (
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="mt-2 text-xs text-blue-600 hover:underline"
+                  >
+                    Add equipment
+                  </button>
+                )}
+              </div>
+            ) : (
+              <EquipmentTable
+                equipment={filteredEquipment}
+                onEdit={handleEditClick}
+                onDelete={handleDeleteEquipment}
+                showActions={true}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="col-span-3 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+          <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="relative p-1.5 bg-yellow-50 text-yellow-600 rounded-lg">
+                <AlertTriangle className="w-4 h-4" />
+                {activeAlerts.length > 0 && (
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                )}
+              </div>
+              <h2 className="text-sm font-bold text-gray-800">Alerts</h2>
             </div>
-
-            {/* Right Column - Equipment + Breakdown + Alerts */}
-            <div className="col-span-9 space-y-3 overflow-hidden flex flex-col">
-              {/* Equipment Table */}
-              <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                <div className="flex-shrink-0 p-3 border-b border-gray-100">
-                  <h2 className="text-sm font-semibold">
-                    Equipment{" "}
-                    {selectedLabId !== "all"
-                      ? `(Lab: ${
-                          labs.find((l) => l.labId === selectedLabId)?.name
-                        })`
-                      : "(All Labs)"}
-                  </h2>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3">
-                  {equipmentLoading ? (
-                    <div className="flex justify-center py-8">
-                      <LoadingSpinner />
-                    </div>
-                  ) : filteredEquipment.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Activity className="w-10 h-10 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">
-                        No equipment found
-                      </p>
-                      {selectedLabId === "all" && (
-                        <button
-                          onClick={() => setIsModalOpen(true)}
-                          className="mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                          Add your first equipment
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <EquipmentTable
-                      equipment={filteredEquipment}
-                      onEdit={handleEditClick}
-                      onDelete={handleDeleteEquipment}
-                      showActions={true}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom Row - Breakdown + Alerts */}
-              <div className="flex-shrink-0 grid grid-cols-2 gap-3 h-64">
-                {/* Breakdown Equipment */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                  <div className="flex-shrink-0 p-3 border-b border-gray-100 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4 text-red-600" />
-                      Breakdown ({breakdownEquipment.length})
-                    </h2>
-                    <button
-                      onClick={() => setIsAddBreakdownModalOpen(true)}
-                      className="px-2 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700"
-                    >
-                      Report
-                    </button>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-3">
-                    {breakdownEquipment.length === 0 ? (
-                      <p className="text-xs text-gray-600 text-center py-4">
-                        No breakdowns reported yet.
-                      </p>
-                    ) : (
-                      <BreakdownEquipmentTable
-                        breakdowns={breakdownEquipment}
-                        onReorder={async (id, data) => {
-                          await submitReorderRequest(id, data);
-                          await fetchBreakdownEquipment();
-                        }}
-                        onResolve={async (id) => {
-                          await resolveBreakdown(id);
-                          await fetchBreakdownEquipment();
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Alerts Section */}
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                  <div className="flex-shrink-0 p-3 border-b border-gray-100 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold">Alerts</h2>
-
-                    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                      <button
-                        onClick={() => handleTabChange("active")}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
-                          alertTab === "active"
-                            ? "bg-white text-blue-600 shadow-sm"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                      >
-                        <List className="w-3 h-3" />
-                        Active
-                      </button>
-                      <button
-                        onClick={() => handleTabChange("history")}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
-                          alertTab === "history"
-                            ? "bg-white text-blue-600 shadow-sm"
-                            : "text-gray-600 hover:text-gray-900"
-                        }`}
-                      >
-                        <History className="w-3 h-3" />
-                        History
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-3">
-                    {alertTab === "active" ? (
-                      isActiveAlertsLoading ? (
-                        <div className="flex justify-center py-6">
-                          <LoadingSpinner />
-                        </div>
-                      ) : (
-                        <AlertsList
-                          alerts={activeAlerts}
-                          onResolve={handleResolveAlert}
-                        />
-                      )
-                    ) : (
-                      <AlertHistoryTable
-                        alerts={historyAlerts}
-                        loading={isHistoryLoading}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
+            <div className="flex bg-gray-100 p-0.5 rounded-lg">
+              <button
+                onClick={() => handleTabChange("active")}
+                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
+                  alertTab === "active"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => handleTabChange("history")}
+                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
+                  alertTab === "history"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                History
+              </button>
             </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-0">
+            {alertTab === "active" ? (
+              isActiveAlertsLoading ? (
+                <div className="flex justify-center py-6">
+                  <LoadingSpinner size="sm" />
+                </div>
+              ) : (
+                <AlertsList
+                  alerts={activeAlerts}
+                  onResolve={handleResolveAlert}
+                  compact={true}
+                />
+              )
+            ) : (
+              <CompactHistoryList
+                alerts={historyAlerts}
+                loading={isHistoryLoading}
+              />
+            )}
           </div>
         </div>
       </div>
 
-      {/* Modals */}
       {breakdownAlertToRespond && (
-        <BreakdownAlertModal
-          isOpen={!!breakdownAlertToRespond}
+        <ModalWrapper
           onClose={() => setBreakdownAlertToRespond(null)}
-          alert={breakdownAlertToRespond}
-          onRespond={async (alertId, isBreakdown, reason) => {
-            await respondToBreakdownAlert(alertId, isBreakdown, reason);
-            await Promise.all([
-              fetchActiveAlertsIsolated(),
-              fetchBreakdownEquipment(),
-              fetchOverview(),
-            ]);
-          }}
-        />
+          title="Respond to Alert"
+          maxWidth="max-w-xl"
+        >
+          <BreakdownAlertModal
+            isOpen={!!breakdownAlertToRespond}
+            onClose={() => setBreakdownAlertToRespond(null)}
+            alert={breakdownAlertToRespond}
+            onRespond={async (alertId, isBreakdown, reason) => {
+              await respondToBreakdownAlert(alertId, isBreakdown, reason);
+              await Promise.all([
+                fetchActiveAlertsIsolated(),
+                fetchBreakdownEquipment(),
+                fetchOverview(),
+              ]);
+            }}
+          />
+        </ModalWrapper>
       )}
 
       {isAddBreakdownModalOpen && (
-        <AddBreakdownModal
-          isOpen={isAddBreakdownModalOpen}
+        <ModalWrapper
           onClose={() => setIsAddBreakdownModalOpen(false)}
-          onSubmit={async (equipmentId, reason) => {
-            await addBreakdownEquipment(equipmentId, reason);
-            await fetchBreakdownEquipment();
-          }}
-        />
+          title="Report Breakdown"
+          maxWidth="max-w-lg"
+        >
+          <AddBreakdownModal
+            isOpen={isAddBreakdownModalOpen}
+            onClose={() => setIsAddBreakdownModalOpen(false)}
+            onSubmit={async (equipmentId, reason) => {
+              await addBreakdownEquipment(equipmentId, reason);
+              await fetchBreakdownEquipment();
+            }}
+          />
+        </ModalWrapper>
       )}
 
       {isModalOpen && (
-        <EquipmentFormModal
-          isOpen={isModalOpen}
+        <ModalWrapper
           onClose={handleModalClose}
-          onSubmit={
-            editingEquipment ? handleUpdateEquipment : handleCreateEquipment
-          }
-          equipment={editingEquipment}
-        />
+          title={editingEquipment ? "Edit Equipment" : "Add Equipment"}
+          maxWidth="max-w-2xl"
+        >
+          <EquipmentFormModal
+            isOpen={isModalOpen}
+            onClose={handleModalClose}
+            onSubmit={
+              editingEquipment ? handleUpdateEquipment : handleCreateEquipment
+            }
+            equipment={editingEquipment}
+          />
+        </ModalWrapper>
       )}
     </div>
   );

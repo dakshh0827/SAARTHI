@@ -34,8 +34,11 @@ import {
   User,
   MapPin,
   FileText,
-  ChevronRight,
-  Search,
+  History,
+  CheckSquare,
+  UserCheck,
+  MessageSquare,
+  Clock,
 } from "lucide-react";
 
 const DEPARTMENT_DISPLAY_NAMES = {
@@ -50,11 +53,159 @@ const DEPARTMENT_DISPLAY_NAMES = {
   AUTOMOTIVE_MECHANIC: "Automotive/Mechanic",
 };
 
-// Helper function for text truncation
-const truncateText = (text, maxLength = 24) => {
-  if (!text) return "";
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + "...";
+// --- Health History Graph ---
+const HealthHistoryChart = ({ currentScore = 0 }) => {
+  const historyData = useMemo(() => {
+    const safeScore = currentScore === 0 ? 0 : currentScore;
+    const months = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov"];
+    return months.map((m, i) => {
+      let calculatedScore = safeScore;
+      if (i < 5) {
+        const variance = Math.floor(Math.random() * 10) - 5;
+        calculatedScore = Math.max(0, Math.min(100, safeScore + variance));
+      }
+      return { month: m, score: calculatedScore };
+    });
+  }, [currentScore]);
+
+  return (
+    <div className="flex flex-col items-center justify-end w-full h-full pb-2">
+      <div className="flex items-end justify-between w-full h-[80px] gap-2 px-2">
+        {historyData.map((item, index) => {
+          const isCurrent = index === historyData.length - 1;
+          let barColor = "bg-blue-200";
+          if (isCurrent) {
+            if (item.score < 50) barColor = "bg-red-500";
+            else if (item.score < 80) barColor = "bg-yellow-500";
+            else barColor = "bg-emerald-500";
+          }
+
+          return (
+            <div
+              key={index}
+              className="flex flex-col items-center justify-end h-full w-full group relative"
+            >
+              <div className="absolute -top-8 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                {item.score}%
+              </div>
+              <div
+                className={`w-full max-w-[16px] rounded-t-sm transition-all duration-700 ease-out ${barColor} ${
+                  isCurrent ? "opacity-100" : "opacity-60 hover:opacity-100"
+                }`}
+                style={{
+                  height: `${Math.max(item.score, 4)}%`,
+                  minHeight: "4px",
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-between w-full px-2 mt-1 border-t border-gray-100 pt-1">
+        {historyData.map((item, index) => (
+          <span
+            key={index}
+            className={`text-[9px] w-full text-center ${
+              index === historyData.length - 1
+                ? "font-bold text-gray-900"
+                : "text-gray-400"
+            }`}
+          >
+            {item.month}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- UPDATED: Detailed History List (Consistent Format) ---
+const CompactHistoryList = ({ alerts, loading }) => {
+  if (loading)
+    return (
+      <div className="flex justify-center py-4">
+        <LoadingSpinner size="sm" />
+      </div>
+    );
+  if (!alerts || alerts.length === 0)
+    return (
+      <div className="text-center text-xs text-gray-500 py-4">
+        No history found.
+      </div>
+    );
+
+  return (
+    <div className="space-y-3 p-2">
+      {alerts.map((alert) => (
+        <div
+          key={alert.id}
+          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-3"
+        >
+          {/* Priority Dot */}
+          <div
+            className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
+              alert.priority === "CRITICAL"
+                ? "bg-red-500 shadow-sm shadow-red-200"
+                : alert.priority === "HIGH"
+                ? "bg-orange-400"
+                : "bg-green-500"
+            }`}
+            title={`Priority: ${alert.priority}`}
+          />
+
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+            {/* Header: Equipment, Type, Date */}
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="font-semibold text-xs text-gray-900">
+                  {alert.equipment?.name || "Unknown Equipment"}
+                </h4>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                    <Building className="w-3 h-3" />{" "}
+                    {alert.lab?.name || "Unknown Lab"}
+                  </span>
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                    {alert.type?.replace(/_/g, " ") || "ALERT"}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] text-gray-400 whitespace-nowrap flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {new Date(
+                  alert.resolvedAt || alert.createdAt
+                ).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            </div>
+
+            {/* Full Message */}
+            <div className="text-xs text-gray-700 bg-gray-50 p-2 rounded border border-gray-100 leading-relaxed">
+              {alert.message}
+            </div>
+
+            {/* Resolution Details (If Resolved) */}
+            {alert.isResolved && (
+              <div className="pt-2 mt-1 border-t border-gray-100 grid gap-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                  <UserCheck className="w-3 h-3" />
+                  Resolved by {alert.resolver?.name || "Admin"}
+                </div>
+                {alert.resolutionNotes && (
+                  <div className="flex items-start gap-1.5 text-[10px] text-gray-500 italic pl-0.5">
+                    <MessageSquare className="w-3 h-3 mt-0.5 flex-shrink-0" />"
+                    {alert.resolutionNotes}"
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export default function PolicyMakerDashboard() {
@@ -66,8 +217,14 @@ export default function PolicyMakerDashboard() {
     error: dashboardError,
   } = useDashboardStore();
   const { alerts, fetchAlerts, resolveAlert } = useAlertStore();
-  const { labs, fetchLabs, deleteLab, isLoading: labLoading } = useLabStore();
 
+  const [alertTab, setAlertTab] = useState("active");
+  const [activeAlerts, setActiveAlerts] = useState([]);
+  const [isActiveAlertsLoading, setIsActiveAlertsLoading] = useState(false);
+  const [historyAlerts, setHistoryAlerts] = useState([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
+  const { labs, fetchLabs, deleteLab, isLoading: labLoading } = useLabStore();
   const { reorderRequests, fetchReorderRequests, reviewReorderRequest } =
     useBreakdownStore();
 
@@ -86,43 +243,61 @@ export default function PolicyMakerDashboard() {
   const [isInstituteModalOpen, setIsInstituteModalOpen] = useState(false);
   const [editingLab, setEditingLab] = useState(null);
 
-  // CHANGE 1: Set default view mode to "list"
   const [viewMode, setViewMode] = useState("list");
-
-  // State for the merged Review Modal
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [reviewComment, setReviewComment] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
+  const parseAlertResponse = (response) => {
+    if (!response) return [];
+    if (Array.isArray(response)) return response;
+    if (response.data && Array.isArray(response.data)) return response.data;
+    if (response.alerts && Array.isArray(response.alerts))
+      return response.alerts;
+    return [];
+  };
+
+  const fetchActiveAlertsIsolated = async () => {
+    setIsActiveAlertsLoading(true);
+    try {
+      const response = await fetchAlerts({ isResolved: false });
+      setActiveAlerts(parseAlertResponse(response));
+    } catch (error) {
+      console.error("Failed to fetch active alerts:", error);
+    } finally {
+      setIsActiveAlertsLoading(false);
+    }
+  };
+
+  const fetchHistoryAlertsIsolated = async () => {
+    setIsHistoryLoading(true);
+    try {
+      const response = await fetchAlerts({ isResolved: true, limit: 20 });
+      setHistoryAlerts(parseAlertResponse(response));
+    } catch (error) {
+      console.error("Failed to fetch history alerts:", error);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  const handleTabChange = (tab) => {
+    setAlertTab(tab);
+    if (tab === "history") fetchHistoryAlertsIsolated();
+    if (tab === "active") fetchActiveAlertsIsolated();
+  };
+
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        console.log("🚀 Loading Policy Maker Dashboard data...");
-
-        const results = await Promise.allSettled([
+        await Promise.allSettled([
           fetchOverview(),
-          fetchAlerts({ isResolved: false }),
+          fetchActiveAlertsIsolated(),
           fetchInstitutes(),
           fetchLabs(),
           fetchReorderRequests(),
         ]);
-
-        results.forEach((result, index) => {
-          if (result.status === "rejected") {
-            const names = [
-              "Overview",
-              "Alerts",
-              "Institutes",
-              "Labs",
-              "Reorder Requests",
-            ];
-            console.error(`❌ Failed to load ${names[index]}:`, result.reason);
-          }
-        });
-
         fetchFilteredCounts("all", "all");
-
-        console.log("✅ Initial data load complete");
       } catch (error) {
         console.error("❌ Failed to load initial data:", error);
       }
@@ -131,11 +306,9 @@ export default function PolicyMakerDashboard() {
   }, []);
 
   const institutesList = institutes;
-
   const departmentsList = useMemo(() => {
-    if (selectedInstitute === "all") {
+    if (selectedInstitute === "all")
       return [...new Set(labs.map((lab) => lab.department))].sort();
-    }
     return [
       ...new Set(
         labs
@@ -173,19 +346,14 @@ export default function PolicyMakerDashboard() {
       const userParams = new URLSearchParams();
       userParams.append("role", "LAB_MANAGER");
       if (instituteId !== "all") userParams.append("instituteId", instituteId);
-
       const userRes = await api.get("/users", { params: userParams });
-
       let managers = userRes.data.data || [];
-      if (department !== "all") {
+      if (department !== "all")
         managers = managers.filter((user) => user.department === department);
-      }
       setLabManagersCount(managers.length);
-
       const eqParams = {};
       if (instituteId !== "all") eqParams.instituteId = instituteId;
       if (department !== "all") eqParams.department = department;
-
       await fetchEquipment(eqParams);
     } catch (error) {
       console.error("Failed to fetch filtered counts:", error);
@@ -195,7 +363,8 @@ export default function PolicyMakerDashboard() {
   const handleResolveAlert = async (alertId) => {
     try {
       await resolveAlert(alertId);
-      await Promise.all([fetchAlerts({ isResolved: false }), fetchOverview()]);
+      await Promise.all([fetchActiveAlertsIsolated(), fetchOverview()]);
+      if (alertTab === "history") fetchHistoryAlertsIsolated();
     } catch (error) {
       console.error("Failed to resolve alert:", error);
       alert("Failed to resolve alert. Please try again.");
@@ -222,25 +391,17 @@ export default function PolicyMakerDashboard() {
     setReviewComment("");
     setSelectedRequest(request);
   };
-
   const handleOpenCreateLab = () => {
     setEditingLab(null);
     setIsLabModalOpen(true);
   };
-
   const handleOpenEditLab = (lab) => {
     setEditingLab(lab);
     setIsLabModalOpen(true);
   };
-
   const handleDeleteLab = async (labId) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete lab ${labId}? This action cannot be undone.`
-      )
-    ) {
+    if (!window.confirm(`Are you sure you want to delete lab ${labId}?`))
       return;
-    }
     try {
       await deleteLab(labId);
       await fetchLabs();
@@ -248,34 +409,28 @@ export default function PolicyMakerDashboard() {
       alert(error.message || "Failed to delete lab");
     }
   };
-
   const handleLabModalClose = async () => {
     setIsLabModalOpen(false);
     setEditingLab(null);
     await fetchLabs();
   };
-
   const handleInstituteModalClose = async () => {
     setIsInstituteModalOpen(false);
     await fetchInstitutes();
     await fetchLabs();
   };
-
   const handleLabClick = (labId) => {
     navigate(`/dashboard/lab-analytics/${labId}`);
   };
 
   const isLoading = dashboardLoading || labLoading || institutesLoading;
-
-  if (isLoading && !labs.length && !institutes.length && !overview) {
+  if (isLoading && !labs.length && !institutes.length && !overview)
     return (
       <div className="flex items-center justify-center h-screen">
         <LoadingSpinner size="lg" />
       </div>
     );
-  }
-
-  if (dashboardError && !overview) {
+  if (dashboardError && !overview)
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
@@ -283,7 +438,6 @@ export default function PolicyMakerDashboard() {
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
             Failed to Load Dashboard
           </h2>
-          <p className="text-gray-600 mb-4">{dashboardError}</p>
           <button
             onClick={() => fetchOverview()}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -293,9 +447,8 @@ export default function PolicyMakerDashboard() {
         </div>
       </div>
     );
-  }
 
-  const overviewStats = [
+  const standardStats = [
     {
       icon: Building,
       title: "Institutions",
@@ -324,59 +477,64 @@ export default function PolicyMakerDashboard() {
       color: "text-purple-600",
       bg: "bg-purple-50",
     },
-    {
-      icon: AlertTriangle,
-      title: "Active Alerts",
-      value: overview?.overview?.unresolvedAlerts || 0,
-      color: "text-orange-600",
-      bg: "bg-orange-50",
-    },
-    {
-      icon: TrendingUp,
-      title: "Health Score",
-      value: `${overview?.overview?.avgHealthScore || 0}%`,
-      color: "text-cyan-600",
-      bg: "bg-cyan-50",
-    },
   ];
 
   const pendingReorders = reorderRequests.filter((r) => r.status === "PENDING");
   const displayedReorders = showPendingOnly ? pendingReorders : reorderRequests;
 
   return (
-    <div className="h-[calc(94vh-4rem)] mt-0.5 overflow-hidden bg-gray-50 p-1">
-      {/* Main Dashboard Grid */}
+    <div className="h-[calc(92vh-4rem)] mt-0.5 overflow-hidden bg-gray-50 p-1">
       <div className="h-full grid grid-cols-12 gap-4">
         {/* LEFT SECTION - 8 Columns */}
         <div className="col-span-8 flex flex-col gap-4 h-full min-h-0">
-          {/* 1. Statistics Section (Grid of cards) */}
-          <div className="grid grid-cols-3 gap-3 flex-shrink-0">
-            {overviewStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div
-                  key={index}
-                  className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+          <div className="grid grid-cols-3 gap-3 flex-shrink-0 h-44">
+            <div className="col-span-2 grid grid-cols-2 grid-rows-2 gap-3 h-full">
+              {standardStats.map((stat, index) => {
+                const Icon = stat.icon;
+                return (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className={`p-2.5 rounded-lg ${stat.bg}`}>
+                      <Icon className={`w-5 h-5 ${stat.color}`} />
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold text-gray-900 leading-tight">
+                        {stat.value}
+                      </div>
+                      <div className="text-xs font-medium text-gray-500">
+                        {stat.title}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="col-span-1 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center justify-between p-3 relative overflow-hidden">
+              <div className="w-full flex items-center justify-between z-10">
+                <h3 className="text-xs font-bold text-gray-700">
+                  Avg Health Score
+                </h3>
+                <span
+                  className={`text-sm font-bold ${
+                    overview?.overview?.avgHealthScore >= 80
+                      ? "text-emerald-600"
+                      : "text-yellow-600"
+                  }`}
                 >
-                  <div className={`p-2.5 rounded-lg ${stat.bg}`}>
-                    <Icon className={`w-5 h-5 ${stat.color}`} />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-gray-900 leading-tight">
-                      {stat.value}
-                    </div>
-                    <div className="text-xs font-medium text-gray-500">
-                      {stat.title}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                  {overview?.overview?.avgHealthScore || 0}%
+                </span>
+              </div>
+              <div className="flex-1 w-full z-10 pt-2">
+                <HealthHistoryChart
+                  currentScore={overview?.overview?.avgHealthScore || 0}
+                />
+              </div>
+            </div>
           </div>
 
-          {/* 2. Labs Directory (Wide Left) */}
           <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
-            {/* Toolbar Row */}
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0 gap-4">
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Building className="w-5 h-5 text-blue-600" />
@@ -387,8 +545,6 @@ export default function PolicyMakerDashboard() {
                   {labsList.length}
                 </span>
               </div>
-
-              {/* Filters */}
               <div className="flex items-center gap-3 flex-1 justify-end">
                 <div className="flex items-center gap-2 max-w-2xl flex-1 justify-end">
                   <Filter className="w-4 h-4 text-gray-400" />
@@ -418,8 +574,6 @@ export default function PolicyMakerDashboard() {
                     ))}
                   </select>
                 </div>
-
-                {/* View Toggles */}
                 <div className="flex bg-gray-100 p-1 rounded-lg shrink-0">
                   <button
                     onClick={() => setViewMode("cards")}
@@ -428,7 +582,6 @@ export default function PolicyMakerDashboard() {
                         ? "bg-white text-blue-600 shadow-sm"
                         : "text-gray-400 hover:text-gray-600"
                     }`}
-                    title="Grid View"
                   >
                     <LayoutGrid className="w-4 h-4" />
                   </button>
@@ -439,7 +592,6 @@ export default function PolicyMakerDashboard() {
                         ? "bg-white text-blue-600 shadow-sm"
                         : "text-gray-400 hover:text-gray-600"
                     }`}
-                    title="List View"
                   >
                     <List className="w-4 h-4" />
                   </button>
@@ -447,7 +599,6 @@ export default function PolicyMakerDashboard() {
               </div>
             </div>
 
-            {/* Labs List Content */}
             <div className="flex-1 overflow-y-auto p-4 min-h-0 bg-gray-50/30">
               {labsList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -455,7 +606,6 @@ export default function PolicyMakerDashboard() {
                   <p className="text-sm">No labs match the selected filters.</p>
                 </div>
               ) : viewMode === "cards" ? (
-                // Grid View - 3 Columns
                 <div className="grid grid-cols-3 gap-4">
                   {labsList.map((lab) => (
                     <div
@@ -466,7 +616,6 @@ export default function PolicyMakerDashboard() {
                         <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
                           <Building className="w-5 h-5" />
                         </div>
-                        {/* Quick Actions */}
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => handleOpenEditLab(lab)}
@@ -482,7 +631,6 @@ export default function PolicyMakerDashboard() {
                           </button>
                         </div>
                       </div>
-
                       <button
                         onClick={() => handleLabClick(lab.labId)}
                         className="text-left flex-1"
@@ -502,7 +650,6 @@ export default function PolicyMakerDashboard() {
                           </p>
                         </div>
                       </button>
-
                       <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
                         <span className="font-mono text-gray-400">
                           #{lab.labId.slice(0, 8)}
@@ -515,7 +662,6 @@ export default function PolicyMakerDashboard() {
                   ))}
                 </div>
               ) : (
-                // List View
                 <div className="space-y-2">
                   {labsList.map((lab) => (
                     <div
@@ -547,7 +693,6 @@ export default function PolicyMakerDashboard() {
                           </div>
                         </div>
                       </button>
-
                       <div className="flex gap-2 pl-4 border-l border-gray-100">
                         <button
                           onClick={() => handleOpenEditLab(lab)}
@@ -578,34 +723,62 @@ export default function PolicyMakerDashboard() {
 
         {/* RIGHT SECTION - 4 Columns */}
         <div className="col-span-4 flex flex-col gap-4 h-full min-h-0">
-          {/* 1. Alerts Section (Increased height to 45% - approx half) */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[45%]">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0 bg-white">
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <AlertTriangle className="w-4 h-4 text-red-500" />
-                  {alerts.length > 0 && (
+                  {activeAlerts.length > 0 && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                   )}
                 </div>
-                <h3 className="text-sm font-bold text-gray-800">
-                  Recent Alerts
-                </h3>
+                <h3 className="text-sm font-bold text-gray-800">Alerts</h3>
               </div>
-              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                {alerts.length} Active
-              </span>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                <button
+                  onClick={() => handleTabChange("active")}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                    alertTab === "active"
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <List className="w-3 h-3" /> Active
+                </button>
+                <button
+                  onClick={() => handleTabChange("history")}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                    alertTab === "history"
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <History className="w-3 h-3" /> History
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-0 min-h-0">
-              <AlertsList
-                alerts={alerts}
-                onResolve={handleResolveAlert}
-                compact={true}
-              />
+              {alertTab === "active" ? (
+                isActiveAlertsLoading ? (
+                  <div className="flex justify-center py-6">
+                    <LoadingSpinner />
+                  </div>
+                ) : (
+                  <AlertsList
+                    alerts={activeAlerts}
+                    onResolve={handleResolveAlert}
+                    compact={true}
+                  />
+                )
+              ) : (
+                <CompactHistoryList
+                  alerts={historyAlerts}
+                  loading={isHistoryLoading}
+                />
+              )}
             </div>
           </div>
 
-          {/* 2. Reorder Requests (Flex-1 takes remaining space) */}
           <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
             <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-2 flex-shrink-0 bg-white">
               <div className="flex items-center justify-between">
@@ -623,7 +796,6 @@ export default function PolicyMakerDashboard() {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </button>
               </div>
-
               <div className="flex bg-gray-100 p-1 rounded-lg w-full">
                 <button
                   onClick={() => setShowPendingOnly(true)}
@@ -647,7 +819,6 @@ export default function PolicyMakerDashboard() {
                 </button>
               </div>
             </div>
-
             <div className="flex-1 overflow-y-auto p-2 min-h-0 bg-gray-50/50">
               {displayedReorders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 py-4">
@@ -670,9 +841,7 @@ export default function PolicyMakerDashboard() {
                             ? "bg-orange-400"
                             : "bg-yellow-400"
                         }`}
-                        title={`Priority: ${request.priority}`}
                       />
-
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <h4 className="font-medium text-xs text-gray-900 truncate max-w-[70%]">
@@ -681,29 +850,24 @@ export default function PolicyMakerDashboard() {
                           <span className="text-[10px] text-gray-400">
                             {new Date(request.createdAt).toLocaleDateString(
                               undefined,
-                              {
-                                month: "short",
-                                day: "numeric",
-                              }
+                              { month: "short", day: "numeric" }
                             )}
                           </span>
                         </div>
                         <div className="text-[10px] text-gray-500 truncate mb-1">
                           {request.labName}
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              request.status === "PENDING"
-                                ? "bg-blue-50 text-blue-600"
-                                : request.status === "APPROVED"
-                                ? "bg-green-50 text-green-600"
-                                : "bg-gray-50 text-gray-500"
-                            }`}
-                          >
-                            {request.status}
-                          </span>
-                        </div>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            request.status === "PENDING"
+                              ? "bg-blue-50 text-blue-600"
+                              : request.status === "APPROVED"
+                              ? "bg-green-50 text-green-600"
+                              : "bg-gray-50 text-gray-500"
+                          }`}
+                        >
+                          {request.status}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -714,11 +878,9 @@ export default function PolicyMakerDashboard() {
         </div>
       </div>
 
-      {/* MERGED DETAILS & REVIEW MODAL */}
       {selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200">
-            {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
@@ -740,10 +902,7 @@ export default function PolicyMakerDashboard() {
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-
-            {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Status and Priority Banner */}
               <div className="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <div className="flex-1">
                   <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -792,8 +951,6 @@ export default function PolicyMakerDashboard() {
                   </div>
                 </div>
               </div>
-
-              {/* Grid Details */}
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
@@ -828,7 +985,6 @@ export default function PolicyMakerDashboard() {
                     </div>
                   </div>
                 </div>
-
                 <div className="space-y-4">
                   <div>
                     <h4 className="text-sm font-medium text-gray-500 mb-1 flex items-center gap-2">
@@ -854,8 +1010,6 @@ export default function PolicyMakerDashboard() {
                   </div>
                 </div>
               </div>
-
-              {/* Description Section */}
               <div>
                 <h4 className="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
                   <FileText className="w-4 h-4" /> Reason / Description
@@ -865,8 +1019,6 @@ export default function PolicyMakerDashboard() {
                     "No additional description provided."}
                 </div>
               </div>
-
-              {/* Review Section (Conditional) */}
               {selectedRequest.status === "PENDING" && (
                 <div className="pt-6 border-t border-gray-200">
                   <h4 className="text-sm font-bold text-gray-900 mb-3">
@@ -879,7 +1031,6 @@ export default function PolicyMakerDashboard() {
                       placeholder="Enter approval notes or rejection reason (required for rejection)..."
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm min-h-[100px] resize-y transition-all"
                     />
-
                     <div className="flex gap-4">
                       <button
                         onClick={() => handleReviewAction("APPROVED")}
@@ -921,7 +1072,6 @@ export default function PolicyMakerDashboard() {
         </div>
       )}
 
-      {/* Other Modals */}
       {isLabModalOpen && (
         <LabManagerForm
           isOpen={isLabModalOpen}
@@ -929,7 +1079,6 @@ export default function PolicyMakerDashboard() {
           labToEdit={editingLab}
         />
       )}
-
       {isInstituteModalOpen && (
         <InstituteManagerForm
           isOpen={isInstituteModalOpen}

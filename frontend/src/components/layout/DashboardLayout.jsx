@@ -2,13 +2,7 @@
 // 10. src/components/layout/DashboardLayout.jsx
 // =====================================================
 
-import {
-  Outlet,
-  Link,
-  useNavigate,
-  useLocation,
-  useOutletContext,
-} from "react-router-dom";
+import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu,
   Home,
@@ -22,8 +16,9 @@ import {
   School,
   Building,
   MonitorPlay,
+  AlertTriangle, // Added for Breakdown icon
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../../stores/authStore";
 
 // Import Modals
@@ -38,12 +33,34 @@ export default function DashboardLayout() {
   const [isInstituteModalOpen, setIsInstituteModalOpen] = useState(false);
   const [isLabModalOpen, setIsLabModalOpen] = useState(false);
 
-  // State to trigger Equipment Modal in child component
+  // State to trigger Modals in child components
   const [triggerEquipmentModal, setTriggerEquipmentModal] = useState(0);
+  const [triggerBreakdownModal, setTriggerBreakdownModal] = useState(0);
 
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Ref for the quick menu container
+  const quickMenuRef = useRef(null);
+
+  // Close quick menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        isQuickMenuOpen &&
+        quickMenuRef.current &&
+        !quickMenuRef.current.contains(event.target)
+      ) {
+        setIsQuickMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isQuickMenuOpen]);
 
   const handleLogout = () => {
     logout();
@@ -97,19 +114,33 @@ export default function DashboardLayout() {
 
     if (role === "LAB_MANAGER") {
       return (
-        <button
-          onClick={() => {
-            // Instead of opening a local modal, we trigger the context
-            setTriggerEquipmentModal((prev) => prev + 1);
-            setIsQuickMenuOpen(false);
-          }}
-          className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-900 rounded-lg transition-colors text-left"
-        >
-          <div className="p-1.5 bg-blue-100 text-blue-800 rounded-md">
-            <MonitorPlay size={18} />
-          </div>
-          <span>Add Equipment</span>
-        </button>
+        <>
+          <button
+            onClick={() => {
+              setTriggerEquipmentModal((prev) => prev + 1);
+              setIsQuickMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-900 rounded-lg transition-colors text-left"
+          >
+            <div className="p-1.5 bg-blue-100 text-blue-800 rounded-md">
+              <MonitorPlay size={18} />
+            </div>
+            <span>Add Equipment</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setTriggerBreakdownModal((prev) => prev + 1);
+              setIsQuickMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-900 rounded-lg transition-colors text-left"
+          >
+            <div className="p-1.5 bg-red-100 text-red-800 rounded-md">
+              <AlertTriangle size={18} />
+            </div>
+            <span>Report Breakdown</span>
+          </button>
+        </>
       );
     }
 
@@ -180,7 +211,10 @@ export default function DashboardLayout() {
 
         {/* QUICK ACTIONS (Bottom Sidebar) */}
         {(role === "POLICY_MAKER" || role === "LAB_MANAGER") && (
-          <div className="p-3 border-t border-gray-100 bg-white relative overflow-visible">
+          <div
+            ref={quickMenuRef}
+            className="p-3 border-t border-gray-100 bg-white relative overflow-visible"
+          >
             {/* The Pop-up Menu Card */}
             <div
               className={`
@@ -265,8 +299,8 @@ export default function DashboardLayout() {
           transition: "margin-left 0.3s ease",
         }}
       >
-        {/* Pass the trigger state down via context */}
-        <Outlet context={{ triggerEquipmentModal }} />
+        {/* Pass trigger states down via context so dashboard can listen to them */}
+        <Outlet context={{ triggerEquipmentModal, triggerBreakdownModal }} />
       </main>
 
       {/* GLOBAL MODALS */}
