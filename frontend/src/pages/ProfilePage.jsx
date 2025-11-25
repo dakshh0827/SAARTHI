@@ -96,7 +96,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Profile Settings</h1>
 
       {/* Message Banner */}
@@ -120,7 +120,7 @@ export default function ProfilePage() {
       {/* Profile Information */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold">Profile Information</h2>
+          <h2 className="text-xl font-semibold">Personal Info</h2>
           {!isEditing && (
             <button
               onClick={() => setIsEditing(true)}

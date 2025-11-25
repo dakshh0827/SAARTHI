@@ -354,9 +354,9 @@ export default function SLDPage() {
           <h1 className="text-2xl font-bold text-gray-900">
             Single Line Diagram (SLD)
           </h1>
-          <p className="text-gray-600 mt-1">
+          {/* <p className="text-gray-600 mt-1">
             Flowchart representation of equipment layout and connections
-          </p>
+          </p> */}
         </div>
         
         {/* Edit Controls (Only for Lab Manager) */}

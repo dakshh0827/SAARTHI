@@ -46,12 +46,12 @@ export default function ChatbotPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-12rem)] flex flex-col">
+    <div className="h-[calc(100vh-12rem)] flex flex-col">
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 mb-4">
         <h1 className="text-2xl font-bold text-gray-900">AI Assistant</h1>
-        <p className="text-gray-600 mt-1">
+        {/* <p className="text-gray-600 mt-1">
           Ask me anything about equipment status, alerts, or analytics
-        </p>
+        </p> */}
       </div>
 
       {/* Chat Messages */}

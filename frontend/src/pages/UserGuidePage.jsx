@@ -32,7 +32,7 @@ const UserGuidePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="space-y-6">
         
         {/* Header - Clean style without gradients */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-6">
@@ -41,9 +41,9 @@ const UserGuidePage = () => {
               <BookOpen className="w-7 h-7 text-blue-600" />
               User Guidelines
             </h1>
-            <p className="text-gray-500 mt-1 text-sm">
+            {/* <p className="text-gray-500 mt-1 text-sm">
               Standard Operating Procedures (SOPs) and safety protocols for lab equipment.
-            </p>
+            </p> */}
           </div>
         </div>
 

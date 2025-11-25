@@ -174,13 +174,13 @@ export default function HelpSupportPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-2 p-6">
+    <div className="space-y-4 p-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Help Center</h1>
-          <p className="text-gray-500 mt-1">
+          {/* <p className="text-gray-500 mt-1">
             Welcome, {user?.firstName || 'User'}. Support resources customized for your role.
-          </p>
+          </p> */}
         </div>
       </div>
 
