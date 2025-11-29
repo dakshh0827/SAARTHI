@@ -251,25 +251,6 @@ export default function ReportGenerationPage() {
             </div>
           )}
 
-          {/* PDF Option */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="generatePDF"
-              checked={formData.generatePDF}
-              onChange={(e) =>
-                setFormData({ ...formData, generatePDF: e.target.checked })
-              }
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label
-              htmlFor="generatePDF"
-              className="text-sm font-medium text-gray-700"
-            >
-              Generate PDF Report
-            </label>
-          </div>
-
           {/* Generate Button */}
           <button
             type="submit"

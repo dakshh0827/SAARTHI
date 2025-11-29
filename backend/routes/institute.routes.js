@@ -6,15 +6,18 @@
 import express from "express";
 import instituteController from "../controllers/institute.controller.js";
 import authMiddleware from "../middlewares/auth.js";
-import { can, isAuthenticated } from "../middlewares/rbac.js";
+import { can } from "../middlewares/rbac.js";
 import { instituteValidation } from "../middlewares/validation.js";
 
 const router = express.Router();
 
-router.use(authMiddleware);
+// --- PUBLIC ROUTES ---
+// This must be public so users can see the list during Signup
+router.get("/", instituteController.getAllInstitutes);
 
-// Get all institutes (for all authenticated users)
-router.get("/", isAuthenticated, instituteController.getAllInstitutes);
+// --- PROTECTED ROUTES ---
+// Apply authentication middleware only to routes below this line
+router.use(authMiddleware);
 
 // Create institute (Policy Maker only)
 router.post(

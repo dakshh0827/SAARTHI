@@ -8,9 +8,10 @@ import {
   USER_ROLE_ENUM,
   OTP_PURPOSE_ENUM,
   AUTH_PROVIDER_ENUM,
-  DEPARTMENT_ENUM, // --- FIX: Import DEPARTMENT_ENUM
+  DEPARTMENT_ENUM,
 } from "../utils/constants.js";
-import EmailService from "../utils/emailService.js";
+// FIXED: Import the real EmailService instead of the utility mock
+import EmailService from "../services/email.service.js";
 
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
@@ -26,7 +27,7 @@ const generateAccessToken = (user) => {
     instituteId: user.instituteId,
     department: user.department,
     labId: user.labId,
-    authProvider: user.authProvider, // --- FIX: Add authProvider to JWT
+    authProvider: user.authProvider,
   };
   return jwt.sign(payload, jwtConfig.secret, {
     expiresIn: jwtConfig.expiresIn,
@@ -57,7 +58,6 @@ class AuthController {
     } = req.body;
 
     // Validate role is a valid UserRole enum value
-    // --- FIX: Use USER_ROLE_ENUM from constants ---
     const validRoles = Object.values(USER_ROLE_ENUM);
     if (role && !validRoles.includes(role)) {
       return res.status(400).json({
@@ -77,7 +77,7 @@ class AuthController {
 
     // Lab ID translation for Trainers and Lab Managers
     let labInternalId = null;
-    if (role === 'TRAINER' || role === 'LAB_MANAGER') {
+    if (role === "TRAINER" || role === "LAB_MANAGER") {
       if (!labId) {
         return res.status(400).json({
           success: false,
@@ -108,41 +108,42 @@ class AuthController {
     }
 
     // Validate role-specific requirements
-    if (role === 'LAB_MANAGER' || role === 'TRAINER') {
+    if (role === "LAB_MANAGER" || role === "TRAINER") {
       if (!instituteId || !department) {
         return res.status(400).json({
           success: false,
           message: "Institute and Department are required for this role.",
         });
       }
-      
-      // Validate department enum
-      // --- FIX: Use DEPARTMENT_ENUM from constants ---
+
       const validDepartments = Object.values(DEPARTMENT_ENUM);
-      
+
       if (!validDepartments.includes(department)) {
         return res.status(400).json({
           success: false,
-          message: `Invalid department. Must be one of: ${validDepartments.join(', ')}`,
+          message: `Invalid department. Must be one of: ${validDepartments.join(
+            ", "
+          )}`,
         });
       }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Build base user data with proper null handling
     const baseUserData = {
       email,
       password: hashedPassword,
       firstName,
       lastName,
-      role: role || 'TRAINER',
+      role: role || "TRAINER",
       phone: phone || null,
-      department: (role === 'LAB_MANAGER' || role === 'TRAINER') ? department : null,
-      instituteId: (role === 'LAB_MANAGER' || role === 'TRAINER') ? instituteId : null,
+      department:
+        role === "LAB_MANAGER" || role === "TRAINER" ? department : null,
+      instituteId:
+        role === "LAB_MANAGER" || role === "TRAINER" ? instituteId : null,
       labId: labInternalId,
       emailVerified: false,
-      authProvider: 'CREDENTIAL',
+      authProvider: "CREDENTIAL",
     };
 
     const user = await prisma.user.upsert({
@@ -155,7 +156,7 @@ class AuthController {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await prisma.oTP.updateMany({
-      where: { email, purpose: 'REGISTRATION', isUsed: false },
+      where: { email, purpose: "REGISTRATION", isUsed: false },
       data: { isUsed: true },
     });
 
@@ -163,12 +164,13 @@ class AuthController {
       data: {
         email,
         otp,
-        purpose: 'REGISTRATION',
+        purpose: "REGISTRATION",
         expiresAt,
       },
     });
 
-    EmailService.sendMail(email, otp).catch((err) =>
+    // FIXED: Use sendOTP instead of sendMail
+    EmailService.sendOTP(email, otp, "verification").catch((err) =>
       logger.error("Failed to send OTP email:", err)
     );
 
@@ -189,7 +191,7 @@ class AuthController {
   });
 
   verifyEmail = asyncHandler(async (req, res, next) => {
-    const { email, otp, purpose = 'REGISTRATION' } = req.body;
+    const { email, otp, purpose = "REGISTRATION" } = req.body;
 
     const validOtp = await prisma.oTP.findFirst({
       where: {
@@ -224,7 +226,7 @@ class AuthController {
         lastName: true,
         role: true,
         instituteId: true,
-        authProvider: true, // --- FIX: Add authProvider
+        authProvider: true,
         institute: {
           select: {
             instituteId: true,
@@ -263,7 +265,7 @@ class AuthController {
   });
 
   resendOtp = asyncHandler(async (req, res, next) => {
-    const { email, purpose = 'REGISTRATION' } = req.body;
+    const { email, purpose = "REGISTRATION" } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
 
@@ -274,7 +276,7 @@ class AuthController {
       });
     }
 
-    if (purpose === 'REGISTRATION' && user.emailVerified) {
+    if (purpose === "REGISTRATION" && user.emailVerified) {
       return res.status(400).json({
         success: false,
         message: "Email is already verified.",
@@ -293,7 +295,9 @@ class AuthController {
       data: { email, otp, purpose, expiresAt },
     });
 
-    EmailService.sendMail(email, otp).catch((err) =>
+    // FIXED: Use sendOTP with correct purpose
+    const emailPurpose = purpose === "LOGIN" ? "login" : "verification";
+    EmailService.sendOTP(email, otp, emailPurpose).catch((err) =>
       logger.error("Failed to send OTP email:", err)
     );
 
@@ -316,9 +320,7 @@ class AuthController {
       });
     }
 
-    // --- FIX: Check if authProvider exists AND is not CREDENTIAL ---
-    // This allows legacy users (where authProvider is null) to log in.
-    if (user.authProvider && user.authProvider !== 'CREDENTIAL') {
+    if (user.authProvider && user.authProvider !== "CREDENTIAL") {
       return res.status(401).json({
         success: false,
         message: `This account is registered with ${user.authProvider}. Please log in using that method.`,
@@ -361,15 +363,16 @@ class AuthController {
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
       await prisma.oTP.updateMany({
-        where: { email, purpose: 'LOGIN', isUsed: false },
+        where: { email, purpose: "LOGIN", isUsed: false },
         data: { isUsed: true },
       });
 
       await prisma.oTP.create({
-        data: { email, otp, purpose: 'LOGIN', expiresAt },
+        data: { email, otp, purpose: "LOGIN", expiresAt },
       });
 
-      EmailService.sendOtpEmail(email, otp).catch((err) =>
+      // FIXED: Use sendOTP('login') instead of sendOtpEmail
+      EmailService.sendOTP(email, otp, "login").catch((err) =>
         logger.error("Failed to send OTP email:", err)
       );
 
@@ -390,7 +393,7 @@ class AuthController {
       instituteId: user.instituteId,
       department: user.department,
       labId: user.labId,
-      authProvider: user.authProvider, // --- FIX: Add authProvider
+      authProvider: user.authProvider,
     };
 
     const accessToken = generateAccessToken(userPayload);
@@ -421,7 +424,7 @@ class AuthController {
       where: {
         email,
         otp,
-        purpose: 'LOGIN',
+        purpose: "LOGIN",
         isUsed: false,
         expiresAt: { gte: new Date() },
       },
@@ -451,7 +454,7 @@ class AuthController {
         instituteId: true,
         department: true,
         labId: true,
-        authProvider: true, // --- FIX: Add authProvider
+        authProvider: true,
       },
     });
 
@@ -513,57 +516,56 @@ class AuthController {
   };
 
   getProfile = asyncHandler(async (req, res) => {
-  // Make sure req.user exists and has the userId
-  if (!req.user || !req.user.userId) {
-    return res.status(401).json({
-      success: false,
-      message: "Authentication required.",
-    });
-  }
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.userId },
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      role: true,
-      phone: true,
-      instituteId: true,
-      institute: {
-        select: {
-          instituteId: true,
-          name: true,
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        phone: true,
+        instituteId: true,
+        institute: {
+          select: {
+            instituteId: true,
+            name: true,
+          },
+        },
+        department: true,
+        labId: true,
+        isActive: true,
+        emailVerified: true,
+        createdAt: true,
+        authProvider: true,
+        lab: {
+          select: {
+            labId: true,
+            name: true,
+          },
         },
       },
-      department: true,
-      labId: true,
-      isActive: true,
-      emailVerified: true,
-      createdAt: true,
-      authProvider: true, // --- FIX: Add authProvider
-      lab: {
-        select: {
-          labId: true,
-          name: true,
-        },
-      },
-    },
-  });
-
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found.",
     });
-  }
 
-  res.json({
-    success: true,
-    data: user,
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user,
+    });
   });
-});
 
   updateProfile = asyncHandler(async (req, res, next) => {
     const { firstName, lastName, phone } = req.body;
@@ -585,7 +587,7 @@ class AuthController {
         instituteId: true,
         department: true,
         labId: true,
-        authProvider: true, // --- FIX: Add authProvider
+        authProvider: true,
       },
     });
 
@@ -672,7 +674,7 @@ class AuthController {
         department: true,
         labId: true,
         isActive: true,
-        authProvider: true, // --- FIX: Add authProvider
+        authProvider: true,
       },
     });
 
@@ -689,7 +691,7 @@ class AuthController {
       instituteId: user.instituteId,
       department: user.department,
       labId: user.labId,
-      authProvider: user.authProvider, // --- FIX: Add authProvider
+      authProvider: user.authProvider,
     };
     const accessToken = generateAccessToken(userPayload);
 
