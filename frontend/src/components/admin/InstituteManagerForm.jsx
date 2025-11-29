@@ -24,7 +24,7 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
   const [newInstituteId, setNewInstituteId] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState("");
-  
+
   // Track if data has been fetched to prevent infinite loops
   const hasFetchedRef = useRef(false);
 
@@ -34,7 +34,7 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
       hasFetchedRef.current = true;
       setError("");
     }
-    
+
     // Reset when modal closes
     if (!isOpen) {
       hasFetchedRef.current = false;
@@ -44,14 +44,17 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
   const handleCreate = async (e) => {
     e.preventDefault();
     setError("");
-    
+
     if (!newName.trim() || !newInstituteId.trim()) {
       setError("Institute Name and ID are required.");
       return;
     }
-    
+
     try {
-      await createInstitute({ name: newName.trim(), instituteId: newInstituteId.trim() });
+      await createInstitute({
+        name: newName.trim(),
+        instituteId: newInstituteId.trim(),
+      });
       setNewName("");
       setNewInstituteId("");
     } catch (err) {
@@ -102,8 +105,9 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return createPortal(
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+    <div
+      // UPDATED: Changed bg-black bg-opacity-50 to bg-black/40 backdrop-blur-md
+      className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 transition-all animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -132,7 +136,10 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
         )}
 
         {/* Create Form */}
-        <form onSubmit={handleCreate} className="p-6 border-b border-gray-200 space-y-4">
+        <form
+          onSubmit={handleCreate}
+          className="p-6 border-b border-gray-200 space-y-4"
+        >
           <label className="block text-lg font-medium text-gray-700">
             Create New Institute
           </label>
@@ -156,7 +163,9 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
               <input
                 type="text"
                 value={newInstituteId}
-                onChange={(e) => setNewInstituteId(e.target.value.toUpperCase())}
+                onChange={(e) =>
+                  setNewInstituteId(e.target.value.toUpperCase())
+                }
                 placeholder="e.g., ITI_PUSA"
                 className="flex-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -173,13 +182,17 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
 
         {/* Institutes List */}
         <div className="p-6 overflow-y-auto flex-1 space-y-3">
-          <h3 className="font-semibold text-gray-800">Existing Institutes ({institutes.length})</h3>
+          <h3 className="font-semibold text-gray-800">
+            Existing Institutes ({institutes.length})
+          </h3>
           {isLoading && institutes.length === 0 ? (
             <div className="flex justify-center py-8">
               <LoadingSpinner />
             </div>
           ) : institutes.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No institutes found. Create one above.</p>
+            <p className="text-gray-500 text-center py-8">
+              No institutes found. Create one above.
+            </p>
           ) : (
             institutes.map((inst) => (
               <div
@@ -196,8 +209,12 @@ export default function InstituteManagerForm({ isOpen, onClose }) {
                   />
                 ) : (
                   <div>
-                    <span className="text-gray-900 font-medium">{inst.name}</span>
-                    <span className="text-gray-500 text-sm ml-2">(ID: {inst.instituteId})</span>
+                    <span className="text-gray-900 font-medium">
+                      {inst.name}
+                    </span>
+                    <span className="text-gray-500 text-sm ml-2">
+                      (ID: {inst.instituteId})
+                    </span>
                   </div>
                 )}
                 <div className="flex gap-2">

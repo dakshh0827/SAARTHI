@@ -105,7 +105,8 @@ const ModalWrapper = ({ children, onClose }) => {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-all animate-in fade-in duration-200"
+      // UPDATED: Changed bg-slate-900/60 to bg-black/40 and backdrop-blur-sm to md for better translucency
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all animate-in fade-in duration-200"
       onClick={onClose}
     >
       <style>{modalStripperStyle}</style>

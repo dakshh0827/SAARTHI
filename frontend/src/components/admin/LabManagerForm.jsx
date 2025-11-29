@@ -24,8 +24,12 @@ const DEPARTMENT_DISPLAY_NAMES = {
 
 export default function LabManagerForm({ isOpen, onClose, labToEdit = null }) {
   const { createLab, updateLab, isLoading } = useLabStore();
-  const { institutes, fetchInstitutes, isLoading: institutesLoading } = useInstituteStore();
-  
+  const {
+    institutes,
+    fetchInstitutes,
+    isLoading: institutesLoading,
+  } = useInstituteStore();
+
   const isEditing = !!labToEdit;
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
@@ -41,13 +45,13 @@ export default function LabManagerForm({ isOpen, onClose, labToEdit = null }) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
-      
+
       // Fetch institutes only once
       if (!hasFetchedRef.current) {
         fetchInstitutes(true);
         hasFetchedRef.current = true;
       }
-      
+
       // Set form data
       if (labToEdit) {
         setFormData({
@@ -68,7 +72,7 @@ export default function LabManagerForm({ isOpen, onClose, labToEdit = null }) {
     } else {
       document.body.style.overflow = "unset";
     }
-    
+
     return () => {
       document.body.style.overflow = "unset";
     };
@@ -82,7 +86,7 @@ export default function LabManagerForm({ isOpen, onClose, labToEdit = null }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    
+
     try {
       if (isEditing) {
         const { name, instituteId, department } = formData;
@@ -99,8 +103,9 @@ export default function LabManagerForm({ isOpen, onClose, labToEdit = null }) {
   if (!isOpen) return null;
 
   return createPortal(
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+    <div
+      // UPDATED: Changed bg-black bg-opacity-50 to bg-black/40 backdrop-blur-md
+      className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 transition-all animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -141,7 +146,9 @@ export default function LabManagerForm({ isOpen, onClose, labToEdit = null }) {
               disabled={institutesLoading}
             >
               <option value="">
-                {institutesLoading ? "Loading institutes..." : "Select Institute"}
+                {institutesLoading
+                  ? "Loading institutes..."
+                  : "Select Institute"}
               </option>
               {institutes.map((inst) => (
                 <option key={inst.id} value={inst.instituteId}>
