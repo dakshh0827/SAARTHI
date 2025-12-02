@@ -277,12 +277,12 @@ const CompactHistoryList = ({ alerts, loading }) => {
       {alerts.map((alert) => (
         <div
           key={alert.id}
-          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-3"
+          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex items-start gap-3"
         >
           <div
             className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
               alert.priority === "CRITICAL"
-                ? "bg-red-500 shadow-sm shadow-red-200"
+                ? "bg-red-500 shadow-md shadow-red-200"
                 : alert.priority === "HIGH"
                 ? "bg-orange-400"
                 : "bg-green-500"
@@ -628,7 +628,7 @@ export default function PolicyMakerDashboard() {
                 return (
                   <div
                     key={index}
-                    className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                    className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-md transition-shadow"
                   >
                     <div className={`p-2.5 rounded-lg ${stat.bg}`}>
                       <Icon className={`w-5 h-5 ${stat.color}`} />
@@ -647,7 +647,7 @@ export default function PolicyMakerDashboard() {
             </div>
 
             {/* Health Score Chart */}
-            <div className="col-span-1 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center justify-between p-3 relative overflow-hidden">
+            <div className="col-span-1 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-md transition-shadow flex flex-col items-center justify-between p-3 relative overflow-hidden">
               <div className="w-full flex items-center justify-between z-10">
                 <h3 className="text-xs font-bold text-gray-700">
                   Avg Health Score
@@ -670,7 +670,7 @@ export default function PolicyMakerDashboard() {
             </div>
           </div>
 
-          <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+          <div className="flex-1 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0 gap-4">
               <div className="flex items-center gap-2 flex-shrink-0">
                 <ImLab className="w-5 h-5 text-blue-600" />
@@ -715,7 +715,7 @@ export default function PolicyMakerDashboard() {
                     onClick={() => setViewMode("cards")}
                     className={`p-1.5 rounded transition-all ${
                       viewMode === "cards"
-                        ? "bg-white text-blue-600 shadow-sm"
+                        ? "bg-white text-blue-600 shadow-md"
                         : "text-gray-400 hover:text-gray-600"
                     }`}
                   >
@@ -725,7 +725,7 @@ export default function PolicyMakerDashboard() {
                     onClick={() => setViewMode("list")}
                     className={`p-1.5 rounded transition-all ${
                       viewMode === "list"
-                        ? "bg-white text-blue-600 shadow-sm"
+                        ? "bg-white text-blue-600 shadow-md"
                         : "text-gray-400 hover:text-gray-600"
                     }`}
                   >
@@ -804,7 +804,7 @@ export default function PolicyMakerDashboard() {
                   {labsList.map((lab) => (
                     <div
                       key={lab.labId}
-                      className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:shadow-sm transition-all group"
+                      className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:shadow-md transition-all group"
                     >
                       <button
                         onClick={() => handleLabClick(lab.labId)}
@@ -861,7 +861,7 @@ export default function PolicyMakerDashboard() {
 
         {/* RIGHT SECTION - 4 Columns */}
         <div className="col-span-4 flex flex-col gap-4 h-full min-h-0">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[45%]">
+          <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col h-[45%]">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0 bg-white">
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -877,7 +877,7 @@ export default function PolicyMakerDashboard() {
                   onClick={() => handleTabChange("active")}
                   className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
                     alertTab === "active"
-                      ? "bg-white text-blue-600 shadow-sm"
+                      ? "bg-white text-blue-600 shadow-md"
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
@@ -887,7 +887,7 @@ export default function PolicyMakerDashboard() {
                   onClick={() => handleTabChange("history")}
                   className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
                     alertTab === "history"
-                      ? "bg-white text-blue-600 shadow-sm"
+                      ? "bg-white text-blue-600 shadow-md"
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
@@ -919,7 +919,7 @@ export default function PolicyMakerDashboard() {
             </div>
           </div>
 
-          <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+          <div className="flex-1 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
             <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-2 flex-shrink-0 bg-white">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -941,7 +941,7 @@ export default function PolicyMakerDashboard() {
                   onClick={() => setShowPendingOnly(true)}
                   className={`flex-1 px-2 py-1 text-xs font-medium rounded-md transition-all text-center ${
                     showPendingOnly
-                      ? "bg-white text-blue-600 shadow-sm"
+                      ? "bg-white text-blue-600 shadow-md"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
@@ -951,7 +951,7 @@ export default function PolicyMakerDashboard() {
                   onClick={() => setShowPendingOnly(false)}
                   className={`flex-1 px-2 py-1 text-xs font-medium rounded-md transition-all text-center ${
                     !showPendingOnly
-                      ? "bg-white text-blue-600 shadow-sm"
+                      ? "bg-white text-blue-600 shadow-md"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
@@ -971,12 +971,12 @@ export default function PolicyMakerDashboard() {
                     <div
                       key={request.id}
                       onClick={() => openRequestModal(request)}
-                      className="group bg-white p-2.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer flex items-start gap-3"
+                      className="group bg-white p-2.5 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex items-start gap-3"
                     >
                       <div
                         className={`w-1.5 h-1.5 mt-1.5 rounded-full flex-shrink-0 ${
                           request.priority === "CRITICAL"
-                            ? "bg-red-500 shadow-red-200 shadow-sm"
+                            ? "bg-red-500 shadow-red-200 shadow-md"
                             : request.priority === "HIGH"
                             ? "bg-orange-400"
                             : "bg-yellow-400"
@@ -1178,7 +1178,7 @@ export default function PolicyMakerDashboard() {
                       <button
                         onClick={() => handleReviewAction("APPROVED")}
                         disabled={isSubmittingReview}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-sm hover:shadow"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-md hover:shadow"
                       >
                         {isSubmittingReview ? (
                           <LoadingSpinner size="sm" color="white" />

@@ -100,12 +100,12 @@ const CompactHistoryList = ({ alerts, loading }) => {
       {alerts.map((alert) => (
         <div
           key={alert.id}
-          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-3"
+          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex items-start gap-3"
         >
           <div
             className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${
               alert.priority === "CRITICAL"
-                ? "bg-red-500 shadow-sm shadow-red-200"
+                ? "bg-red-500 shadow-md shadow-red-200"
                 : alert.priority === "HIGH"
                 ? "bg-orange-400"
                 : "bg-green-500"
@@ -481,7 +481,7 @@ export default function LabManagerDashboard() {
             return (
               <div
                 key={index}
-                className="flex flex-col justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow h-full min-h-0"
+                className="flex flex-col justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-md transition-shadow h-full min-h-0"
               >
                 <div className="w-full flex items-center justify-between">
                   <div className={`p-3 rounded-lg ${stat.bg}`}>
@@ -499,7 +499,7 @@ export default function LabManagerDashboard() {
           })}
         </div>
 
-        <div className="col-span-9 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div className="col-span-9 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-3 py-2 border-b border-gray-100 bg-white flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-red-50 text-red-600 rounded-lg">
@@ -509,7 +509,7 @@ export default function LabManagerDashboard() {
             </div>
             <button
               onClick={() => setIsAddBreakdownModalOpen(true)}
-              className="px-2 py-1 text-[10px] font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors uppercase tracking-wide shadow-sm"
+              className="px-2 py-1 text-[10px] font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors uppercase tracking-wide shadow-md"
             >
               Report Issue
             </button>
@@ -545,7 +545,7 @@ export default function LabManagerDashboard() {
 
       {/* --- ROW 2: Remaining 60% Height --- */}
       <div className="flex-1 min-h-0 grid grid-cols-12 gap-4">
-        <div className="col-span-9 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div className="col-span-9 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between gap-4">
             <div className="relative" ref={dropdownRef}>
               <button
@@ -628,7 +628,7 @@ export default function LabManagerDashboard() {
               </select>
               <button
                 onClick={handleExportData}
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-gray-200 hover:border-blue-100 transition-colors shadow-sm"
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-gray-200 hover:border-blue-100 transition-colors shadow-md"
                 title="Export CSV"
               >
                 <FaDownload className="w-4 h-4" />
@@ -641,7 +641,7 @@ export default function LabManagerDashboard() {
                 onClick={() =>
                   navigate(`/dashboard/lab-analytics/${selectedLabId}`)
                 }
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-gray-200 hover:border-blue-100 transition-colors shadow-sm"
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-gray-200 hover:border-blue-100 transition-colors shadow-md"
                 title="Go to Lab Analytics"
               >
                 <FaExternalLinkAlt className="w-4 h-4" />
@@ -679,10 +679,10 @@ export default function LabManagerDashboard() {
           </div>
         </div>
 
-        <div className="col-span-3 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div className="col-span-3 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="relative p-1.5 bg-yellow-50 text-yellow-600 rounded-lg">
+              <div className="relative p-1.5 bg-red-100 text-red-600 rounded-lg">
                 <FaExclamationTriangle className="w-4 h-4" />
                 {activeAlerts.length > 0 && (
                   <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white" />
@@ -695,7 +695,7 @@ export default function LabManagerDashboard() {
                 onClick={() => handleTabChange("active")}
                 className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
                   alertTab === "active"
-                    ? "bg-white text-blue-600 shadow-sm"
+                    ? "bg-white text-blue-600 shadow-md"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
@@ -705,7 +705,7 @@ export default function LabManagerDashboard() {
                 onClick={() => handleTabChange("history")}
                 className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
                   alertTab === "history"
-                    ? "bg-white text-blue-600 shadow-sm"
+                    ? "bg-white text-blue-600 shadow-md"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >

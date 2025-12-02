@@ -169,12 +169,12 @@ const CompactHistoryList = ({ alerts, loading }) => {
       {alerts.map((alert) => (
         <div
           key={alert.id}
-          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-start gap-3"
+          className="group bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all flex items-start gap-3"
         >
           <div
             className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${
               alert.priority === "CRITICAL"
-                ? "bg-red-500 shadow-sm shadow-red-200"
+                ? "bg-red-500 shadow-md shadow-red-200"
                 : alert.priority === "HIGH"
                 ? "bg-orange-400"
                 : "bg-green-500"
@@ -370,7 +370,7 @@ export default function TrainerDashboard() {
             return (
               <div
                 key={index}
-                className="flex flex-col justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow h-full min-h-0"
+                className="flex flex-col justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-md hover:shadow-md transition-shadow h-full min-h-0"
               >
                 <div className="w-full flex items-center justify-between">
                   <div className={`p-3 rounded-lg ${stat.bg}`}>
@@ -389,7 +389,7 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Right: Lab Status Overview (Chart + Vertical Stats) */}
-        <div className="col-span-12 lg:col-span-9 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div className="col-span-12 lg:col-span-9 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-3 py-2 border-b border-gray-100 bg-white flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -407,7 +407,7 @@ export default function TrainerDashboard() {
           <div className="flex-1 w-full p-4 flex gap-6 overflow-hidden">
             
             {/* Left: Chart Section */}
-            <div className="flex-[4] flex flex-col h-full bg-white rounded-xl border border-gray-100 p-3 relative shadow-sm">
+            <div className="flex-[4] flex flex-col h-full bg-white rounded-xl border border-gray-100 p-3 relative shadow-md">
                 <div className="flex justify-between items-center mb-2">
                     <h3 className="text-xs font-bold text-gray-700">Health Trend</h3>
                     <div className="flex items-center gap-2">
@@ -436,7 +436,7 @@ export default function TrainerDashboard() {
                     className={`flex items-center justify-between p-2.5 rounded-lg border ${getStatusBg(item.status)}`}
                   >
                     <div className="flex items-center gap-2.5">
-                        <div className="p-1 bg-white rounded-full shadow-sm">
+                        <div className="p-1 bg-white rounded-full shadow-md">
                            {getStatusIcon(item.status)}
                         </div>
                         <div className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
@@ -457,7 +457,7 @@ export default function TrainerDashboard() {
       <div className="flex-1 min-h-0 grid grid-cols-12 gap-4">
         
         {/* Left: Main Equipment Table */}
-        <div className="col-span-12 lg:col-span-9 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div className="col-span-12 lg:col-span-9 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
@@ -517,7 +517,7 @@ export default function TrainerDashboard() {
         </div>
 
         {/* Right: Alerts Panel */}
-        <div className="col-span-12 lg:col-span-3 h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+        <div className="col-span-12 lg:col-span-3 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="relative p-1.5 bg-red-100 text-red-600 rounded-lg">
@@ -534,7 +534,7 @@ export default function TrainerDashboard() {
                 onClick={() => handleTabChange("active")}
                 className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
                   alertTab === "active"
-                    ? "bg-white text-blue-600 shadow-sm"
+                    ? "bg-white text-blue-600 shadow-md"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
@@ -544,7 +544,7 @@ export default function TrainerDashboard() {
                 onClick={() => handleTabChange("history")}
                 className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
                   alertTab === "history"
-                    ? "bg-white text-blue-600 shadow-sm"
+                    ? "bg-white text-blue-600 shadow-md"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >

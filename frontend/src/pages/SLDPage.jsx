@@ -62,6 +62,7 @@ export default function SLDPage() {
   const [selectedInstitute, setSelectedInstitute] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedLab, setSelectedLab] = useState("all");
+  const [isInitialized, setIsInitialized] = useState(false);
   
   const [numColumns, setNumColumns] = useState(3);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -69,74 +70,122 @@ export default function SLDPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // =========================================================
-  // 1. INITIALIZATION LOGIC
-  // =========================================================
-  useEffect(() => {
-    const initializePage = async () => {
-      // CASE A: TRAINER (Direct Access via User Context)
-      if (user.role === "TRAINER") {
-        // We use the labId directly from the user object, just like the Dashboard
-        const trainerLabId = user.lab?.labId; 
-        
-        if (trainerLabId) {
-          setSelectedLab(trainerLabId);
-        } else {
-          console.warn("Trainer has no lab assigned in user context.");
-        }
-      } 
-      // CASE B: ADMIN/MANAGER (Needs Lists to Select)
-      else {
-        try {
-          if (user.role === "POLICY_MAKER") {
-            await fetchInstitutes();
-          }
-          await fetchLabs();
-        } catch (error) {
-          console.error("Failed to load filter data:", error);
-        }
-      }
-    };
-
-    initializePage();
-  }, [user]);
-
-  // =========================================================
-  // 2. DATA FETCHING (Triggered when selectedLab changes)
-  // =========================================================
-  useEffect(() => {
-    // Only fetch if a specific lab is selected (ID is not "all")
-    if (selectedLab && selectedLab !== "all") {
-      // Fetch Equipment for this lab
-      fetchEquipment({ labId: selectedLab });
-      // Fetch Layout for this lab
-      loadSavedLayout(selectedLab);
+// =========================================================
+// =========================================================
+// 1. TRAINER INITIALIZATION - Separate useEffect
+// =========================================================
+useEffect(() => {
+  const initializeTrainer = async () => {
+    if (!user || user.role !== "TRAINER") return;
+    
+    const trainerLabId = user.lab?.labId;
+    console.log("Trainer initialization - Lab ID:", trainerLabId);
+    
+    if (!trainerLabId) {
+      console.warn("Trainer has no lab assigned");
+      setIsInitialized(true);
+      return;
     }
-  }, [selectedLab]);
 
-  // Helper to load layout
-  const loadSavedLayout = async (labId) => {
     try {
-      const layout = await fetchLayout(labId);
+      setIsInitialized(false);
+      
+      // Set the selected lab
+      setSelectedLab(trainerLabId);
+      
+      // Fetch equipment
+      console.log("Fetching equipment for trainer lab:", trainerLabId);
+      await fetchEquipment({ labId: trainerLabId });
+      
+      // Small delay to ensure equipment state is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Fetch layout
+      console.log("Fetching layout for trainer lab:", trainerLabId);
+      const layout = await fetchLayout(trainerLabId);
+      
+      if (layout && layout.positions && Object.keys(layout.positions).length > 0) {
+        console.log("Layout loaded:", layout);
+        setEquipmentPositions(layout.positions);
+        setNumColumns(layout.numColumns || 4);
+      } else {
+        console.log("No saved layout, will use defaults");
+        setEquipmentPositions({});
+      }
+      
+      setIsInitialized(true);
+      console.log("Trainer initialization complete");
+      
+    } catch (error) {
+      console.error("Error initializing trainer data:", error);
+      setIsInitialized(true);
+    }
+  };
+
+  initializeTrainer();
+}, [user]); // Only depend on user
+
+// =========================================================
+// 2. NON-TRAINER INITIALIZATION
+// =========================================================
+useEffect(() => {
+  const initializeOtherRoles = async () => {
+    if (!user || user.role === "TRAINER") return;
+    
+    try {
+      if (user.role === "POLICY_MAKER") {
+        await fetchInstitutes();
+      }
+      await fetchLabs();
+    } catch (error) {
+      console.error("Failed to load filter data:", error);
+    }
+  };
+
+  initializeOtherRoles();
+}, [user]);
+
+// =========================================================
+// 3. DATA FETCHING FOR NON-TRAINERS (Lab Selection Change)
+// =========================================================
+useEffect(() => {
+  // Skip if trainer or no specific lab selected
+  if (!user || user.role === "TRAINER" || !selectedLab || selectedLab === "all") {
+    return;
+  }
+  
+  const fetchLabData = async () => {
+    try {
+      console.log("Fetching data for selected lab:", selectedLab);
+      await fetchEquipment({ labId: selectedLab });
+      
+      const layout = await fetchLayout(selectedLab);
       if (layout && layout.positions && Object.keys(layout.positions).length > 0) {
         setEquipmentPositions(layout.positions);
         setNumColumns(layout.numColumns || 4);
       } else {
-        // Reset to default if no layout exists
-        setEquipmentPositions({}); 
+        setEquipmentPositions({});
       }
     } catch (error) {
-      console.error("Failed to load layout:", error);
+      console.error("Error fetching lab data:", error);
       setEquipmentPositions({});
     }
   };
 
-  // Re-calculate default positions if equipment loads and no positions are set
-  useEffect(() => {
-    if (equipment.length > 0 && Object.keys(equipmentPositions).length === 0) {
-      initializeDefaultPositions();
-    }
-  }, [equipment, equipmentPositions]);
+  fetchLabData();
+}, [selectedLab]);
+
+// =========================================================
+// 4. INITIALIZE DEFAULT POSITIONS WHEN EQUIPMENT LOADS
+// =========================================================
+useEffect(() => {
+  // Only initialize if we have equipment and no positions set
+  if (!equipment || equipment.length === 0) return;
+  if (Object.keys(equipmentPositions).length > 0) return;
+  
+  console.log("Initializing default positions for equipment");
+  initializeDefaultPositions();
+}, [equipment]);
 
   // =========================================================
   // 3. COMPUTED VALUES (For Filters & Display)
@@ -183,16 +232,21 @@ export default function SLDPage() {
   // =========================================================
   // 4. LAYOUT & INTERACTION LOGIC
   // =========================================================
-  const initializeDefaultPositions = () => {
-    const defaultPositions = {};
-    const cols = numColumns;
-    equipment.forEach((eq, index) => {
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      defaultPositions[eq.id] = { column: col, row };
-    });
-    setEquipmentPositions(defaultPositions);
-  };
+const initializeDefaultPositions = () => {
+  if (!equipment || equipment.length === 0) return;
+  
+  const defaultPositions = {};
+  const cols = numColumns;
+  
+  equipment.forEach((eq, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    defaultPositions[eq.id] = { column: col, row };
+  });
+  
+  console.log("Default positions created:", defaultPositions);
+  setEquipmentPositions(defaultPositions);
+};
 
   const saveLayout = async () => {
     try {
@@ -350,7 +404,9 @@ export default function SLDPage() {
     setHasUnsavedChanges(false);
   };
 
-  const isLoading = labsLoading || equipmentLoading || institutesLoading || layoutLoading;
+  const isLoading = user?.role === "TRAINER" 
+    ? !isInitialized 
+    : (labsLoading || equipmentLoading || institutesLoading || layoutLoading);
   const canEdit = user.role === "LAB_MANAGER";
 
   return (
@@ -515,30 +571,29 @@ export default function SLDPage() {
 
       {/* CANVAS / DIAGRAM AREA */}
       <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg shadow-sm border border-gray-200 p-8 overflow-auto">
-        {isLoading ? (
-          <div className="flex justify-center items-center min-h-[600px]">
-            <LoadingSpinner size="lg" />
-          </div>
+      {isLoading ? (
+        <div className="flex justify-center items-center min-h-[600px]">
+          <LoadingSpinner size="lg" />
+        </div>
+        ) : user?.role === "TRAINER" && !user?.lab?.labId ? (
+        <div className="flex flex-col items-center justify-center min-h-[600px] text-gray-500">
+          <FaExclamationCircle className="w-16 h-16 text-red-300 mb-4" />
+          <p className="text-lg">No Lab Assigned</p>
+          <p className="text-sm text-gray-400 mt-2">Please contact your administrator.</p>
+        </div>
         ) : selectedLab === "all" ? (
-          <div className="flex flex-col items-center justify-center min-h-[600px] text-gray-500">
-            {user.role === "TRAINER" ? (
-               <>
-                 <FaExclamationCircle className="w-16 h-16 text-red-300 mb-4" />
-                 <p className="text-lg">No Lab Assigned</p>
-                 <p className="text-sm text-gray-400 mt-2">Please contact your administrator.</p>
-               </>
-            ) : (
-               <>
-                 <FaExclamationCircle className="w-16 h-16 text-gray-300 mb-4" />
-                 <p className="text-lg">Please select a lab to view equipment layout</p>
-               </>
-            )}
-          </div>
+        <div className="flex flex-col items-center justify-center min-h-[600px] text-gray-500">
+          <FaExclamationCircle className="w-16 h-16 text-gray-300 mb-4" />
+          <p className="text-lg">Please select a lab to view equipment layout</p>
+        </div>
         ) : equipment.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[600px] text-gray-500">
-            <FaExclamationCircle className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-lg">No equipment found in this lab</p>
-          </div>
+        <div className="flex flex-col items-center justify-center min-h-[600px] text-gray-500">
+          <FaExclamationCircle className="w-16 h-16 text-gray-300 mb-4" />
+          <p className="text-lg">No equipment found in this lab</p>
+          <p className="text-sm text-gray-400 mt-2">
+            {user?.role === "TRAINER" ? "Your lab has no equipment registered yet." : "Try selecting a different lab"}
+          </p>
+        </div>
         ) : (
           <div 
             className="relative mx-auto" 
