@@ -59,15 +59,6 @@ const STATUS_CONFIG = {
   },
 };
 
-const getInstituteName = (institute) => {
-  if (!institute) return "";
-  if (typeof institute === "string") return institute;
-  if (typeof institute === "object") {
-    return institute.name || institute.instituteId || "";
-  }
-  return "";
-};
-
 export default function EquipmentTable({
   equipment = [],
   onEdit,
@@ -161,13 +152,11 @@ export default function EquipmentTable({
                   </div>
                 </td>
 
+                {/* UPDATED: Removed Institute Name div and helper function */}
                 <td className="px-4 py-4">
                   <div className="text-sm">
                     <div className="text-gray-900">
                       {item.lab?.name || "N/A"}
-                    </div>
-                    <div className="text-gray-500 text-xs">
-                      {getInstituteName(item.lab?.institute)}
                     </div>
                   </div>
                 </td>

@@ -4,11 +4,7 @@
  * =====================================================
  */
 import { useState } from "react";
-import {
-  FaExclamationCircle,
-  FaBox,
-  FaCheckCircle,
-} from "react-icons/fa";
+import { FaExclamationCircle, FaBox, FaCheckCircle } from "react-icons/fa";
 import ReorderModal from "./ReorderModal";
 
 const STATUS_COLORS = {
@@ -104,15 +100,14 @@ export default function BreakdownEquipmentTable({
                       </div>
                     </div>
                   </td>
+
+                  {/* UPDATED: Removed Institute Name div */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
                       {equipment.lab.name}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {equipment.lab.institute?.name ||
-                        equipment.lab.instituteId}
-                    </div>
                   </td>
+
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${

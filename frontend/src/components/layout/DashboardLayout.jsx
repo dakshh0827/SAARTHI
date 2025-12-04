@@ -1,3 +1,8 @@
+/*
+ * =====================================================
+ * frontend/src/layouts/DashboardLayout.jsx
+ * =====================================================
+ */
 import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   FaBars,
@@ -12,7 +17,7 @@ import {
   FaUniversity,
   FaBuilding,
   FaDesktop,
-  FaExclamationTriangle
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../../stores/authStore";
@@ -111,6 +116,20 @@ export default function DashboardLayout() {
     if (role === "LAB_MANAGER") {
       return (
         <>
+          {/* Added "Add New Lab" option for Lab Manager */}
+          <button
+            onClick={() => {
+              setIsLabModalOpen(true);
+              setIsQuickMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-3 p-3 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-900 rounded-lg transition-colors text-left"
+          >
+            <div className="p-1.5 bg-blue-100 text-blue-800 rounded-md">
+              <FaBuilding size={18} />
+            </div>
+            <span>Add New Lab</span>
+          </button>
+
           <button
             onClick={() => {
               setTriggerEquipmentModal((prev) => prev + 1);
@@ -266,9 +285,7 @@ export default function DashboardLayout() {
           transition: "left 0.3s ease",
         }}
       >
-        <h1 className="text-2xl font-bold text-blue-600">
-          MaViK-39
-        </h1>
+        <h1 className="text-2xl font-bold text-blue-600">MaViK-39</h1>
 
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600 hidden sm:block">
