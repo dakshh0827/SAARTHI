@@ -94,12 +94,15 @@ export default function SLDPage() {
 
   const trainerInitializedRef = useRef(false);
 
-  // ... (Data Loading Logic preserved exactly as original) ...
+  // --- DATA LOADING LOGIC ---
   const loadLabData = useCallback(
     async (labId) => {
       if (!labId || labId === "all") return;
       try {
-        const equipmentData = await fetchEquipment({ labId });
+        // FIX: Added limit: 1000 to ensure all equipment is fetched.
+        // Without this, default pagination (often 20) limits the view to ~5 rows.
+        const equipmentData = await fetchEquipment({ labId, limit: 1000 });
+        
         const eqCount = equipmentData?.data?.length || 0;
         const defaultColumns =
           eqCount > 0 ? Math.max(1, Math.min(4, eqCount)) : 3;
@@ -408,6 +411,7 @@ export default function SLDPage() {
       rootX,
       rootY,
       totalWidth,
+      // Ensure height accommodates all rows plus padding
       totalHeight: equipmentStartY + (maxRow + 1) * ROW_HEIGHT,
     };
   };
@@ -432,14 +436,6 @@ export default function SLDPage() {
 
     // Case 2: Standard Bus Route (Down -> Horizontal -> Down)
     const xDir = ex > sx ? 1 : -1;
-
-    // Logic:
-    // 1. Start
-    // 2. Down to BusY - r
-    // 3. Curve to Bus
-    // 4. Horizontal to EndX - (dir*r)
-    // 5. Curve Down
-    // 6. Down to EndY
 
     return `
       M ${sx} ${sy}
@@ -477,7 +473,7 @@ export default function SLDPage() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER & FILTERS (Preserved exactly as is) */}
+      {/* HEADER & FILTERS */}
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -725,7 +721,6 @@ export default function SLDPage() {
               style={{ width: "100%", height: "100%", top: 0, left: 0 }}
             >
               <defs>
-                {/* We can keep arrowheads, or use circles for a schematic look */}
                 {layout.connections.map((conn, index) => (
                   <marker
                     key={`arrowhead-${index}`}
@@ -743,7 +738,6 @@ export default function SLDPage() {
 
               {layout.connections.map((conn, index) => (
                 <g key={index}>
-                  {/* Connection Line */}
                   <path
                     d={getSmoothPath(
                       conn.startX,
@@ -762,7 +756,6 @@ export default function SLDPage() {
                       conn.animated ? "animate-pulse" : ""
                     }`}
                   />
-                  {/* Connection Dot at Root */}
                   <circle
                     cx={conn.startX + CANVAS_PADDING}
                     cy={conn.startY + CANVAS_PADDING}

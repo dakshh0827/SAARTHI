@@ -10,11 +10,17 @@ router.use(authMiddleware);
 router.get('/overview', can.viewBasicAnalytics, analyticsController.getAnalyticsOverview);
 
 // Get equipment-specific analytics
-// Note: :id here is the Equipment *internal* ID, not the string equipmentId
 router.get(
   '/equipment/:id',
   can.viewDetailedAnalytics,
   analyticsController.getEquipmentAnalytics
+);
+
+// NEW: Get predictive maintenance data for a specific lab
+router.get(
+  '/predictive/:labId', 
+  can.viewDetailedAnalytics, 
+  analyticsController.getLabPredictiveAnalytics
 );
 
 export default router;

@@ -615,7 +615,7 @@ export default function PolicyMakerDashboard() {
   const displayedReorders = showPendingOnly ? pendingReorders : reorderRequests;
 
   return (
-    <div className="h-[calc(92vh-4rem)] mt-0.5 overflow-hidden bg-gray-50 p-1">
+    <div className="h-[calc(92vh-4rem)] mt-0.5 overflow-hidden bg-gray-200 p-1">
       <div className="h-full grid grid-cols-12 gap-4">
         {/* LEFT SECTION - 8 Columns */}
         <div className="col-span-8 flex flex-col gap-4 h-full min-h-0">

@@ -1,12 +1,13 @@
 import prisma from "../config/database.js";
 import { filterDataByRole } from "../middlewares/rbac.js";
+import mlService from "../services/ml.service.js";
 
 const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 class AnalyticsController {
-  // Get analytics overview
+  // ... (Keep existing getAnalyticsOverview)
   getAnalyticsOverview = asyncHandler(async (req, res) => {
     const roleFilter = filterDataByRole(req);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -34,13 +35,12 @@ class AnalyticsController {
     res.json({ success: true, data });
   });
 
-  // Get equipment-specific analytics
+  // ... (Keep existing getEquipmentAnalytics)
   getEquipmentAnalytics = asyncHandler(async (req, res) => {
     const { days = 30 } = req.query;
-    const { id } = req.params; // Equipment internal ID
+    const { id } = req.params; 
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    // Verify access
     const roleFilter = filterDataByRole(req);
     const equipment = await prisma.equipment.findFirst({
       where: { id, ...roleFilter },
@@ -64,11 +64,10 @@ class AnalyticsController {
     res.json({ success: true, data });
   });
 
-  // Get department-specific analytics for an equipment
+  // ... (Keep existing getDepartmentAnalytics)
   getDepartmentAnalytics = asyncHandler(async (req, res) => {
-    const { id } = req.params; // Equipment internal ID
+    const { id } = req.params;
 
-    // Verify access
     const roleFilter = filterDataByRole(req);
     const equipment = await prisma.equipment.findFirst({
       where: { id, ...roleFilter },
@@ -86,6 +85,72 @@ class AnalyticsController {
       success: true,
       data: equipment.analyticsParams,
     });
+  });
+
+  // --- FIXED METHOD: Predictive Analytics Integration ---
+  getLabPredictiveAnalytics = asyncHandler(async (req, res) => {
+    const { labId } = req.params; // This is the public string ID (e.g., "ATI_MUMBAI_CNC_01")
+
+    // We search for equipment where the *related Lab's* labId matches the parameter
+    const equipmentList = await prisma.equipment.findMany({
+      where: { 
+        lab: {
+          labId: labId // <--- FIXED: Filtering via the relation
+        },
+        isActive: true 
+      },
+      include: {
+        status: true,
+        analyticsParams: true
+      }
+    });
+
+    if (!equipmentList.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Process each equipment and get predictions
+    const predictions = await Promise.all(equipmentList.map(async (eq) => {
+      const status = eq.status || {};
+      const params = eq.analyticsParams || {};
+      
+      // A. Calculate Days Since Weekly Maintenance
+      let daysSinceMaintenance = 0;
+      if (status.lastMaintenanceDate) {
+        const diffTime = Math.abs(new Date() - new Date(status.lastMaintenanceDate));
+        daysSinceMaintenance = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      // B. Calculate Energy Consumption (Watts)
+      let energyWatts = 0;
+      if (params.voltage && params.current) {
+         energyWatts = params.voltage * params.current; // P = V * I
+      } else if (status.energyConsumption) {
+         energyWatts = status.energyConsumption; 
+      } else {
+         energyWatts = 200; // Default nominal value
+      }
+
+      // C. Prepare features for ML Model
+      const features = {
+        temperature: params.temperature || status.temperature || 50,
+        vibration: params.vibration || status.vibration || 0,
+        energyConsumption: energyWatts,
+        daysSinceMaintenance: daysSinceMaintenance
+      };
+
+      // D. Call ML Service
+      const mlResult = await mlService.getPrediction(features);
+
+      return {
+        id: eq.id,
+        name: eq.name,
+        features,
+        prediction: mlResult
+      };
+    }));
+
+    res.json({ success: true, data: predictions });
   });
 }
 
