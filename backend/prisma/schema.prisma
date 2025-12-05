@@ -1,10 +1,4 @@
-/*
- * =====================================================
- * 1. backend/prisma/schema.prisma (UPDATED)
- * =====================================================
- */
-// This is your Prisma schema file
-// Database: MongoDB
+// backend/prisma/schema.prisma - UPDATED
 
 generator client {
   provider = "prisma-client-js"
@@ -15,51 +9,43 @@ datasource db {
   url      = "mongodb+srv://dakshthakran05_db_user:XNuoDz8HxynA0iYG@cluster0.9awo5nj.mongodb.net/SIH_Finals?appName=Cluster0"
 }
 
-// ==================== INSTITUTE MODEL (NEW) ====================
+// ==================== INSTITUTE MODEL ====================
 model Institute {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  instituteId String   @unique // NEW: Human-readable public ID
+  instituteId String   @unique
   name        String   @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
   labs  Lab[]
   users User[]
 
   @@map("institutes")
 }
 
-// ==================== USER MODEL (UPDATED) ====================
-// ==================== USER MODEL (OAUTH REMOVED) ====================
+// ==================== USER MODEL ====================
 model User {
   id            String       @id @default(auto()) @map("_id") @db.ObjectId
   email         String       @unique
-  password      String       // Made required since we removed OAuth
+  password      String
   firstName     String
   lastName      String
   role          UserRole     @default(TRAINER)
   phone         String?
-  // --- UPDATED: These fields are now used by both Trainer and Lab Manager ---
-  department    Department? // Department for Trainer & Lab Manager
-  instituteId   String? // Institute for Trainer & Lab Manager
+  department    Department?
+  instituteId   String?
   institute     Institute? @relation(fields: [instituteId], references: [instituteId], onDelete: SetNull)
-  labId         String? @db.ObjectId // Primary lab for Trainer & Lab Manager
+  labId         String? @db.ObjectId
   lab           Lab? @relation(fields: [labId], references: [id], onDelete: SetNull)
-  // --- END UPDATE ---
-  
   isActive      Boolean      @default(true)
   emailVerified Boolean      @default(false)
 
   breakdownReports      BreakdownEquipment[]
   reorderRequests       ReorderRequest[]
   reviewedReorders      ReorderRequest[]     @relation("ReviewedBy")
-  
-  // REMOVED: OAuth fields (googleId, githubId, authProvider)
-  
-  // Reverse relations
   notifications      Notification[]
   maintenanceLogs    MaintenanceLog[]
+  markedMaintenances MaintenanceRecord[]  // NEW: Track maintenance records
   reports            Report[]
   chatMessages       ChatMessage[]
   
@@ -70,6 +56,23 @@ model User {
   @@index([department])
   @@index([labId])
   @@map("users")
+}
+
+// ==================== NEW: MAINTENANCE RECORD MODEL ====================
+model MaintenanceRecord {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  equipmentId       String    @db.ObjectId
+  equipment         Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  markedBy          String    @db.ObjectId
+  markedByUser      User      @relation(fields: [markedBy], references: [id])
+  maintenanceDate   DateTime  @default(now())
+  maintenanceType   String?   // e.g., "Preventive", "Corrective", "Calibration"
+  notes             String?
+  createdAt         DateTime  @default(now())
+
+  @@index([equipmentId])
+  @@index([maintenanceDate])
+  @@map("maintenance_records")
 }
 
 // ==================== OTP MODEL ====================
@@ -87,43 +90,35 @@ model OTP {
   @@map("otps")
 }
 
-// ==================== ENUMS ====================
-// REMOVED: AuthProvider enum
-
 enum OTPPurpose {
   REGISTRATION
   LOGIN
 }
 
 enum UserRole {
-  POLICY_MAKER   // Can manage labs, view all data across institutes
-  LAB_MANAGER    // Manages equipment in specific department/institute, cannot create/delete labs
-  TRAINER        // Views equipment in their specific lab
+  POLICY_MAKER
+  LAB_MANAGER
+  TRAINER
 }
 
-// ==================== LAB MODEL (UPDATED) ====================
+// ==================== LAB MODEL ====================
 model Lab {
   id         String     @id @default(auto()) @map("_id") @db.ObjectId
   labId      String     @unique
   name       String
-  
-  // --- UPDATED: Relation now uses the string 'instituteId' ---
-  instituteId String    // This will store the public instituteId string
+  instituteId String
   institute   Institute @relation(fields: [instituteId], references: [instituteId], onDelete: Restrict)
-  
   department Department
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
-  // Relations
   equipments Equipment[]
   trainers   User[]
 
-  @@index([instituteId]) // UPDATED
+  @@index([instituteId])
   @@map("labs")
 }
 
-// ==================== DEPARTMENT ENUM (9 Departments) ====================
 enum Department {
   FITTER_MANUFACTURING
   ELECTRICAL_ENGINEERING
@@ -136,9 +131,7 @@ enum Department {
   AUTOMOTIVE_MECHANIC
 }
 
-// ==================== EQUIPMENT ENUMS BY DEPARTMENT ====================
-
-// Fitter/Manufacturing Equipment
+// Equipment Name Enums (unchanged)
 enum FitterEquipmentName {
   BENCH_DRILLING_MACHINE
   ANGLE_GRINDER_PORTABLE
@@ -147,14 +140,12 @@ enum FitterEquipmentName {
   MIG_CO2_WELDING_MACHINE
 }
 
-// Electrical Engineering Equipment
 enum ElectricalEquipmentName {
   ELECTRICIAN_TRAINING_PANEL
   ADVANCED_ELECTRICIAN_SETUP_PLC_VFD
   BENCH_DRILLING_MACHINE
 }
 
-// Welding & Fabrication Equipment
 enum WeldingEquipmentName {
   ARC_WELDING_MACHINE_200_300A
   GAS_WELDING_KIT_OXY_ACETYLENE
@@ -162,26 +153,22 @@ enum WeldingEquipmentName {
   VR_AR_WELDING_SIMULATOR
 }
 
-// Tool & Die Making Equipment
 enum ToolDieEquipmentName {
   TOOL_DIE_EQUIPMENT_EDM_JIG_BORING
   PLANER_MACHINE
   GEAR_HOBBING_SHAPING_MACHINE
 }
 
-// Additive Manufacturing Equipment
 enum AdditiveManufacturingEquipmentName {
   THREE_D_PRINTER_FDM_RESIN
   LASER_ENGRAVING_CUTTING_MACHINE
 }
 
-// Solar Installer (PV) Equipment
 enum SolarInstallerEquipmentName {
   INVERTER_TRAINING_UNIT
   DRILLING_MACHINE_AND_TOOLS
 }
 
-// Material Testing / Quality Equipment
 enum MaterialTestingEquipmentName {
   TENSILE_TESTING_MACHINE
   COMPRESSION_TESTING_MACHINE
@@ -191,13 +178,11 @@ enum MaterialTestingEquipmentName {
   ENVIRONMENTAL_CHAMBER
 }
 
-// Advanced Manufacturing/CNC Equipment
 enum AdvancedManufacturingEquipmentName {
   CNC_VERTICAL_MACHINING_CENTER_3_4_AXIS
   CNC_LATHE_2_AXIS
 }
 
-// Automotive/Mechanic Equipment
 enum AutomotiveEquipmentName {
   MOTOR_VEHICLE_TRAINING_MODEL
 }
@@ -205,7 +190,7 @@ enum AutomotiveEquipmentName {
 // ==================== EQUIPMENT MODEL ====================
 model Equipment {
   id             String     @id @default(auto()) @map("_id") @db.ObjectId
-  equipmentId    String     @unique // Public equipment ID
+  equipmentId    String     @unique
   name           String
   department     Department
   labId          String     @db.ObjectId
@@ -218,6 +203,10 @@ model Equipment {
   specifications Json?
   imageUrl       String?
   isActive       Boolean    @default(true)
+  
+  // NEW: Firebase device ID for realtime data (only 9 equipment in one lab)
+  firebaseDeviceId String?
+  
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -231,67 +220,62 @@ model Equipment {
   materialTestingEquipmentName      MaterialTestingEquipmentName?
   advancedManufacturingEquipmentName AdvancedManufacturingEquipmentName?
   automotiveEquipmentName           AutomotiveEquipmentName?
+  
   // Relations
   status          EquipmentStatus?
   sensorData      SensorData[]
   alerts          Alert[]
   maintenanceLogs MaintenanceLog[]
+  maintenanceRecords MaintenanceRecord[]  // NEW
   usageAnalytics  UsageAnalytics[]
   breakdownRecords    BreakdownEquipment[]
   analyticsParams DepartmentAnalytics?
+  
   @@index([labId])
   @@index([department])
+  @@index([firebaseDeviceId])
   @@map("equipment")
 }
 
-// ==================== DEPARTMENT-SPECIFIC ANALYTICS ====================
+// ==================== DEPARTMENT-SPECIFIC ANALYTICS (UPDATED) ====================
 model DepartmentAnalytics {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId String     @unique @db.ObjectId
   equipment   Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   department  Department
 
-  // Common parameters across all departments
-  temperature       Float? // Current temperature
+  // REQUIRED parameters (tracked by hardware)
+  temperature       Float     // Current temperature (REQUIRED)
+  vibration         Float     // Current vibration (REQUIRED)
+  energyConsumption Float     // Power consumption in Watts (REQUIRED)
+  
+  // Common parameters
   efficiency        Float? // Efficiency percentage
-  totalUptime       Float  @default(0) // Total uptime in hours
-  totalDowntime     Float  @default(0) // Total downtime in hours
-  utilizationRate   Float  @default(0) // Percentage
+  totalUptime       Float  @default(0)
+  totalDowntime     Float  @default(0)
+  utilizationRate   Float  @default(0)
   
-  // Department-specific parameters (nullable based on department)
-  // Fitter/Manufacturing & Welding
-  vibration         Float?
-  arcStability      Float? // For welding
-  weldQuality       Float? // For welding
-  
-  // Electrical Engineering
+  // Optional department-specific parameters
+  arcStability      Float?
+  weldQuality       Float?
   voltage           Float?
   current           Float?
   powerFactor       Float?
-  // Material Testing
   testAccuracy      Float?
   calibrationStatus String?
   loadCapacity      Float?
-  // Advanced Manufacturing/CNC
   spindleSpeed      Float?
   feedRate          Float?
   toolWear          Float?
   dimensionalAccuracy Float?
-  // Additive Manufacturing
   printQuality      Float?
   layerHeight       Float?
   materialUsage     Float?
-  
-  // Solar Installer
   solarEfficiency   Float?
   powerOutput       Float?
   batteryHealth     Float?
-  
-  // Automotive
   enginePerformance Float?
   fuelEfficiency    Float?
-  
-  // Tool & Die Making
   precisionLevel    Float?
   surfaceFinish     Float?
   
@@ -300,17 +284,23 @@ model DepartmentAnalytics {
   @@map("department_analytics")
 }
 
-// ==================== EQUIPMENT STATUS ====================
+// ==================== EQUIPMENT STATUS (UPDATED) ====================
 model EquipmentStatus {
   id                  String            @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId         String            @unique @db.ObjectId
   equipment           Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   status              OperationalStatus @default(IDLE)
   healthScore         Float             @default(100)
-  isOperatingInClass  Boolean           @default(false) // NEW: Tracks if equipment is being used in class
+  isOperatingInClass  Boolean           @default(false)
   currentOperator     String?
-  lastMaintenanceDate DateTime?
+  lastMaintenanceDate DateTime?         // Automatically updated from MaintenanceRecord
   nextMaintenanceDate DateTime?
+  
+  // Real-time tracked parameters (from Firebase)
+  temperature       Float?
+  vibration         Float?
+  energyConsumption Float?
+  
   lastUsedAt          DateTime?
   updatedAt           DateTime          @updatedAt
 
@@ -320,7 +310,7 @@ model EquipmentStatus {
 enum OperationalStatus {
   OPERATIONAL
   IN_USE
-  IN_CLASS     // NEW: Equipment being used during class
+  IN_CLASS
   IDLE
   MAINTENANCE
   FAULTY
@@ -328,33 +318,35 @@ enum OperationalStatus {
   WARNING
 }
 
-// ==================== SENSOR DATA ====================
+// ==================== SENSOR DATA (UPDATED) ====================
 model SensorData {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId String    @db.ObjectId
   equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   timestamp   DateTime  @default(now())
   
-  // Generic sensor data
-  temperature       Float?
-  vibration         Float?
-  energyConsumption Float?
+  // Core tracked parameters
+  temperature       Float
+  vibration         Float
+  energyConsumption Float
+  
+  // Optional parameters
   pressure          Float?
   humidity          Float?
-  // Department-specific sensor data
   voltage           Float?
   current           Float?
   rpm               Float?
   powerFactor       Float?
   loadForce         Float?
-  isAnomaly    Boolean @default(false)
-  anomalyScore Float?
+  isAnomaly         Boolean @default(false)
+  anomalyScore      Float?
 
   @@map("sensor_data")
   @@index([equipmentId, timestamp(sort: Desc)])
 }
 
-// ==================== ALERTS ====================
+// Remaining models unchanged (Alert, Notification, MaintenanceLog, UsageAnalytics, Report, ChatMessage, SystemConfig, BreakdownEquipment, ReorderRequest, SLDLayout)
+
 model Alert {
   id            String        @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId   String        @db.ObjectId
@@ -382,7 +374,7 @@ enum AlertType {
   WARRANTY_EXPIRING
   EQUIPMENT_BREAKDOWN_CHECK
   UNSAFE_USAGE
-  UNSAFE_PATTERN_DETECTED // NEW: For unsafe patterns during class
+  UNSAFE_PATTERN_DETECTED
   EQUIPMENT_OFFLINE
   LOW_HEALTH_SCORE
   CUSTOM
@@ -395,7 +387,6 @@ enum AlertSeverity {
   LOW
 }
 
-// ==================== NOTIFICATIONS ====================
 model Notification {
   id        String           @id @default(auto()) @map("_id") @db.ObjectId
   userId    String           @db.ObjectId
@@ -420,10 +411,9 @@ enum NotificationType {
   REPORT
   SYSTEM
   CHAT
-  UNSAFE_PATTERN // NEW: For unsafe usage alerts
+  UNSAFE_PATTERN
 }
 
-// ==================== MAINTENANCE LOGS ====================
 model MaintenanceLog {
   id            String            @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId   String            @db.ObjectId
@@ -461,18 +451,17 @@ enum MaintenanceStatus {
   OVERDUE
 }
 
-// ==================== USAGE ANALYTICS ====================
 model UsageAnalytics {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   equipmentId     String    @db.ObjectId
   equipment       Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   date            DateTime
-  totalUsageHours Float     @default(0) // Total uptime
-  totalDowntime   Float     @default(0) // Total downtime
-  utilizationRate Float     @default(0) // Percentage
+  totalUsageHours Float     @default(0)
+  totalDowntime   Float     @default(0)
+  utilizationRate Float     @default(0)
   efficiency      Float     @default(0)
-  sessionsCount   Int       @default(0) // Number of times equipment was used
-  classSessions   Int       @default(0) // NEW: Number of class sessions
+  sessionsCount   Int       @default(0)
+  classSessions   Int       @default(0)
   avgSessionTime  Float     @default(0)
   energyConsumed  Float     @default(0)
   createdAt       DateTime  @default(now())
@@ -482,7 +471,6 @@ model UsageAnalytics {
   @@index([equipmentId, date(sort: Desc)])
 }
 
-// ==================== REPORTS ====================
 model Report {
   id          String     @id @default(auto()) @map("_id") @db.ObjectId
   reportType  ReportType
@@ -508,12 +496,11 @@ enum ReportType {
   USAGE_ANALYTICS
   ALERT_HISTORY
   ENERGY_CONSUMPTION
-  DEPARTMENT_SUMMARY  // NEW: Summary by department
-  LIFECYCLE_REPORT    // NEW: Equipment lifecycle analysis
+  DEPARTMENT_SUMMARY
+  LIFECYCLE_REPORT
   CUSTOM
 }
 
-// ==================== CHATBOT ====================
 model ChatMessage {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String   @db.ObjectId
@@ -527,7 +514,6 @@ model ChatMessage {
   @@index([userId, createdAt(sort: Desc)])
 }
 
-// ==================== SYSTEM CONFIG ====================
 model SystemConfig {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   key         String   @unique
@@ -544,9 +530,9 @@ model BreakdownEquipment {
   equipment       Equipment             @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   reportedBy      String                @db.ObjectId
   reportedByUser  User                  @relation(fields: [reportedBy], references: [id])
-  reason          String?               // Reason for breakdown
+  reason          String?
   reportedAt      DateTime              @default(now())
-  isAutoDetected  Boolean               @default(false) // True if detected by 15-day check
+  isAutoDetected  Boolean               @default(false)
   status          BreakdownStatus       @default(REPORTED)
   reorderRequests ReorderRequest[]
   
@@ -556,14 +542,13 @@ model BreakdownEquipment {
 }
 
 enum BreakdownStatus {
-  REPORTED       // Equipment marked as broken down
-  REORDER_PENDING // Reorder request submitted
-  REORDER_APPROVED // Reorder approved by policy maker
-  REORDER_REJECTED // Reorder rejected by policy maker
-  RESOLVED       // Equipment fixed/replaced
+  REPORTED
+  REORDER_PENDING
+  REORDER_APPROVED
+  REORDER_REJECTED
+  RESOLVED
 }
 
-// ==================== REORDER REQUEST MODEL ====================
 model ReorderRequest {
   id                  String              @id @default(auto()) @map("_id") @db.ObjectId
   breakdownId         String              @db.ObjectId
@@ -604,10 +589,10 @@ enum ReorderStatus {
 
 model SLDLayout {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  labId     String   @unique // One layout per lab
-  numColumns Int     @default(4) // Number of columns in the flowchart
-  positions  Json    // Store equipment positions: { equipmentId: { column, row } }
-  updatedBy  String  @db.ObjectId // User who last updated
+  labId     String   @unique
+  numColumns Int     @default(4)
+  positions  Json
+  updatedBy  String  @db.ObjectId
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

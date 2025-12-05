@@ -5,6 +5,7 @@ import app from './app.js'; // Import the clean app
 import { initializeSocketIO } from './config/socketio.js';
 import prisma from './config/database.js';
 import logger from './utils/logger.js';
+import firebaseService from './services/firebase.service.js';
 
 // =================== CONFIG ===================
 dotenv.config();
@@ -24,6 +25,8 @@ server.listen(PORT, async () => {
     logger.info(`🚀 Server running on port ${PORT}`);
     logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
     logger.info(`🌐 API URL: http://localhost:${PORT}`);
+    await firebaseService.startAllListeners();
+    logger.info('✅ Firebase listeners started');
   } catch (error) {
     logger.error('❌ Failed to start server:', error);
     process.exit(1);

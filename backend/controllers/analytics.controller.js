@@ -88,70 +88,80 @@ class AnalyticsController {
   });
 
   // --- FIXED METHOD: Predictive Analytics Integration ---
-  getLabPredictiveAnalytics = asyncHandler(async (req, res) => {
-    const { labId } = req.params; // This is the public string ID (e.g., "ATI_MUMBAI_CNC_01")
+getLabPredictiveAnalytics = asyncHandler(async (req, res) => {
+  const { labId } = req.params;
 
-    // We search for equipment where the *related Lab's* labId matches the parameter
-    const equipmentList = await prisma.equipment.findMany({
-      where: { 
-        lab: {
-          labId: labId // <--- FIXED: Filtering via the relation
-        },
-        isActive: true 
-      },
-      include: {
-        status: true,
-        analyticsParams: true
+  const equipmentList = await prisma.equipment.findMany({
+    where: { 
+      lab: { labId: labId },
+      isActive: true 
+    },
+    include: {
+      status: true,
+      analyticsParams: true,
+      maintenanceRecords: {
+        orderBy: { maintenanceDate: 'desc' },
+        take: 1
       }
-    });
+    }
+  });
 
-    if (!equipmentList.length) {
-      return res.json({ success: true, data: [] });
+  if (!equipmentList.length) {
+    return res.json({ success: true, data: [] });
+  }
+
+  const predictions = await Promise.all(equipmentList.map(async (eq) => {
+    const status = eq.status || {};
+    const params = eq.analyticsParams || {};
+    
+    // Get last maintenance date
+    const lastMaintenance = eq.maintenanceRecords[0]?.maintenanceDate || eq.status?.lastMaintenanceDate;
+    
+    // Calculate days since maintenance
+    let daysSinceMaintenance = 0;
+    if (lastMaintenance) {
+      const diffTime = Math.abs(new Date() - new Date(lastMaintenance));
+      daysSinceMaintenance = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     }
 
-    // Process each equipment and get predictions
-    const predictions = await Promise.all(equipmentList.map(async (eq) => {
-      const status = eq.status || {};
-      const params = eq.analyticsParams || {};
-      
-      // A. Calculate Days Since Weekly Maintenance
-      let daysSinceMaintenance = 0;
-      if (status.lastMaintenanceDate) {
-        const diffTime = Math.abs(new Date() - new Date(status.lastMaintenanceDate));
-        daysSinceMaintenance = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    // Prepare features for ML Model
+    const features = {
+      temperature: params.temperature || status.temperature || 50,
+      vibration: params.vibration || status.vibration || 0,
+      energyConsumption: params.energyConsumption || status.energyConsumption || 200,
+      daysSinceMaintenance: daysSinceMaintenance
+    };
+
+    // Call ML Service
+    const mlResult = await mlService.getPrediction(features);
+
+    // Calculate days until maintenance needed
+    let daysUntilMaintenance = null;
+    if (mlResult.prediction === 1 || mlResult.probability > 70) {
+      // Urgent - calculate based on probability
+      const urgencyFactor = mlResult.probability / 100;
+      daysUntilMaintenance = Math.max(1, Math.floor(7 * (1 - urgencyFactor)));
+    } else {
+      // Calculate based on maintenance cycle (assume 90 days)
+      const maintenanceCycle = 90;
+      daysUntilMaintenance = Math.max(0, maintenanceCycle - daysSinceMaintenance);
+    }
+
+    return {
+      id: eq.id,
+      name: eq.name,
+      features,
+      prediction: {
+        ...mlResult,
+        daysUntilMaintenance,
+        lastMaintenanceDate: lastMaintenance,
+        daysSinceMaintenance
       }
+    };
+  }));
 
-      // B. Calculate Energy Consumption (Watts)
-      let energyWatts = 0;
-      if (params.voltage && params.current) {
-         energyWatts = params.voltage * params.current; // P = V * I
-      } else if (status.energyConsumption) {
-         energyWatts = status.energyConsumption; 
-      } else {
-         energyWatts = 200; // Default nominal value
-      }
-
-      // C. Prepare features for ML Model
-      const features = {
-        temperature: params.temperature || status.temperature || 50,
-        vibration: params.vibration || status.vibration || 0,
-        energyConsumption: energyWatts,
-        daysSinceMaintenance: daysSinceMaintenance
-      };
-
-      // D. Call ML Service
-      const mlResult = await mlService.getPrediction(features);
-
-      return {
-        id: eq.id,
-        name: eq.name,
-        features,
-        prediction: mlResult
-      };
-    }));
-
-    res.json({ success: true, data: predictions });
-  });
+  res.json({ success: true, data: predictions });
+});
 }
 
 export default new AnalyticsController();
