@@ -25,4 +25,18 @@ router.put(
   maintenanceController.updateMaintenanceLog
 );
 
+// NEW: Mark maintenance (Lab Manager only)
+router.post(
+  '/mark/:equipmentId',
+  can.manageMaintenance,
+  maintenanceController.markMaintenance
+);
+
+// NEW: Get maintenance records for equipment
+router.get(
+  '/records/:equipmentId',
+  can.viewMaintenance,
+  maintenanceController.getMaintenanceRecords
+);
+
 export default router;

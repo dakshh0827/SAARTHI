@@ -1,819 +1,656 @@
+// backend/prisma/seed.js - COMPLETE ENHANCED SEED WITH REAL DATA
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-// Import enums from your constants file
-// Make sure the path is correct relative to this seed file
-import {
-  DEPARTMENT_ENUM,
-  USER_ROLE_ENUM,
-  OPERATIONAL_STATUS,
-  ALERT_TYPE,
-  ALERT_SEVERITY,
-  MAINTENANCE_TYPE,
-  REPORT_TYPE,
-  NOTIFICATION_TYPE,
-} from "../utils/constants.js";
-
 const prisma = new PrismaClient();
 
-/**
- * Generates a random integer between min (inclusive) and max (inclusive)
- */
-function getRandomInt(min, max) {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+// =================== UNIVERSAL PASSWORD ===================
+const UNIVERSAL_PASSWORD = "Test@123";
+
+// =================== FIREBASE DEVICE IDS ===================
+const FIREBASE_DEVICE_IDS = [
+  "User1", "User2", "User3", "User4", "User5",
+  "User6", "User7", "User8", "User9"
+];
+
+// =================== INSTITUTES DATA ===================
+const INSTITUTES_DATA = [
+  { instituteId: "ITI_JAIPUR", name: "Government ITI Jaipur" },
+  { instituteId: "ITI_KHO_NAGORIYAN", name: "Government ITI Kho Nagoriyan" },
+  { instituteId: "GURUKUL_ITI", name: "Gurukul ITI Jaipur" },
+  { instituteId: "BHAWANI_NIKETAN", name: "Shri Bhawani Niketan ITI" },
+  { instituteId: "BSDU", name: "Bhartiya Skill Development University" }
+];
+
+// =================== DEPARTMENTS ===================
+const DEPARTMENTS = [
+  "FITTER_MANUFACTURING",
+  "ELECTRICAL_ENGINEERING",
+  "WELDING_FABRICATION",
+  "TOOL_DIE_MAKING",
+  "ADDITIVE_MANUFACTURING",
+  "SOLAR_INSTALLER_PV",
+  "MATERIAL_TESTING_QUALITY",
+  "ADVANCED_MANUFACTURING_CNC",
+  "AUTOMOTIVE_MECHANIC"
+];
+
+// =================== USERS DATA ===================
+const POLICY_MAKERS = [
+  { email: "rajesh.kumar@education.gov.in", firstName: "Rajesh", lastName: "Kumar" },
+  { email: "priya.sharma@education.gov.in", firstName: "Priya", lastName: "Sharma" }
+];
+
+// 2 Lab Managers per institute = 10 total
+const LAB_MANAGERS = [
+  { email: "amit.verma@itijaipur.edu.in", firstName: "Amit", lastName: "Verma", instituteIndex: 0 },
+  { email: "sunita.patel@itijaipur.edu.in", firstName: "Sunita", lastName: "Patel", instituteIndex: 0 },
+  { email: "vijay.singh@itikho.edu.in", firstName: "Vijay", lastName: "Singh", instituteIndex: 1 },
+  { email: "meera.desai@itikho.edu.in", firstName: "Meera", lastName: "Desai", instituteIndex: 1 },
+  { email: "kavita.mehta@gurukul.edu.in", firstName: "Kavita", lastName: "Mehta", instituteIndex: 2 },
+  { email: "rohit.malhotra@gurukul.edu.in", firstName: "Rohit", lastName: "Malhotra", instituteIndex: 2 },
+  { email: "anjali.reddy@bhawani.edu.in", firstName: "Anjali", lastName: "Reddy", instituteIndex: 3 },
+  { email: "prakash.joshi@bhawani.edu.in", firstName: "Prakash", lastName: "Joshi", instituteIndex: 3 },
+  { email: "deepika.nair@bsdu.edu.in", firstName: "Deepika", lastName: "Nair", instituteIndex: 4 },
+  { email: "rakesh.pandey@bsdu.edu.in", firstName: "Rakesh", lastName: "Pandey", instituteIndex: 4 }
+];
+
+// 3-4 Trainers per lab (5 institutes × 2 labs/dept × 9 depts = 90 labs, need ~270-360 trainers)
+// Creating 100 trainers for distribution
+const TRAINERS = [
+  { email: "ramesh.yadav@trainer.edu.in", firstName: "Ramesh", lastName: "Yadav" },
+  { email: "neha.gupta@trainer.edu.in", firstName: "Neha", lastName: "Gupta" },
+  { email: "suresh.reddy@trainer.edu.in", firstName: "Suresh", lastName: "Reddy" },
+  { email: "anita.desai@trainer.edu.in", firstName: "Anita", lastName: "Desai" },
+  { email: "manoj.joshi@trainer.edu.in", firstName: "Manoj", lastName: "Joshi" },
+  { email: "deepa.nair@trainer.edu.in", firstName: "Deepa", lastName: "Nair" },
+  { email: "pooja.saxena@trainer.edu.in", firstName: "Pooja", lastName: "Saxena" },
+  { email: "arun.menon@trainer.edu.in", firstName: "Arun", lastName: "Menon" },
+  { email: "swati.jain@trainer.edu.in", firstName: "Swati", lastName: "Jain" },
+  { email: "kiran.bose@trainer.edu.in", firstName: "Kiran", lastName: "Bose" },
+  { email: "gaurav.kapoor@trainer.edu.in", firstName: "Gaurav", lastName: "Kapoor" },
+  { email: "ritu.sharma@trainer.edu.in", firstName: "Ritu", lastName: "Sharma" },
+  { email: "vikram.singh@trainer.edu.in", firstName: "Vikram", lastName: "Singh" },
+  { email: "preeti.agarwal@trainer.edu.in", firstName: "Preeti", lastName: "Agarwal" },
+  { email: "ajay.kumar@trainer.edu.in", firstName: "Ajay", lastName: "Kumar" },
+  { email: "sonia.verma@trainer.edu.in", firstName: "Sonia", lastName: "Verma" },
+  { email: "harish.patel@trainer.edu.in", firstName: "Harish", lastName: "Patel" },
+  { email: "divya.malhotra@trainer.edu.in", firstName: "Divya", lastName: "Malhotra" },
+  { email: "rajat.chauhan@trainer.edu.in", firstName: "Rajat", lastName: "Chauhan" },
+  { email: "megha.bansal@trainer.edu.in", firstName: "Megha", lastName: "Bansal" },
+  { email: "naveen.thakur@trainer.edu.in", firstName: "Naveen", lastName: "Thakur" },
+  { email: "shruti.iyer@trainer.edu.in", firstName: "Shruti", lastName: "Iyer" },
+  { email: "mohit.rana@trainer.edu.in", firstName: "Mohit", lastName: "Rana" },
+  { email: "pallavi.khanna@trainer.edu.in", firstName: "Pallavi", lastName: "Khanna" },
+  { email: "sanjay.dubey@trainer.edu.in", firstName: "Sanjay", lastName: "Dubey" },
+  { email: "nisha.gupta@trainer.edu.in", firstName: "Nisha", lastName: "Gupta" },
+  { email: "alok.mishra@trainer.edu.in", firstName: "Alok", lastName: "Mishra" },
+  { email: "priyanka.chawla@trainer.edu.in", firstName: "Priyanka", lastName: "Chawla" },
+  { email: "rahul.bajaj@trainer.edu.in", firstName: "Rahul", lastName: "Bajaj" },
+  { email: "tanvi.sinha@trainer.edu.in", firstName: "Tanvi", lastName: "Sinha" },
+  { email: "varun.mehta@trainer.edu.in", firstName: "Varun", lastName: "Mehta" },
+  { email: "sneha.rajput@trainer.edu.in", firstName: "Sneha", lastName: "Rajput" },
+  { email: "ashok.tiwari@trainer.edu.in", firstName: "Ashok", lastName: "Tiwari" },
+  { email: "kavya.reddy@trainer.edu.in", firstName: "Kavya", lastName: "Reddy" },
+  { email: "nikhil.jain@trainer.edu.in", firstName: "Nikhil", lastName: "Jain" },
+  { email: "aarti.shah@trainer.edu.in", firstName: "Aarti", lastName: "Shah" },
+  { email: "pankaj.goyal@trainer.edu.in", firstName: "Pankaj", lastName: "Goyal" },
+  { email: "rashmi.kapoor@trainer.edu.in", firstName: "Rashmi", lastName: "Kapoor" },
+  { email: "sumit.agnihotri@trainer.edu.in", firstName: "Sumit", lastName: "Agnihotri" },
+  { email: "archana.pillai@trainer.edu.in", firstName: "Archana", lastName: "Pillai" },
+  { email: "manish.bhatt@trainer.edu.in", firstName: "Manish", lastName: "Bhatt" },
+  { email: "sapna.rastogi@trainer.edu.in", firstName: "Sapna", lastName: "Rastogi" },
+  { email: "abhishek.soni@trainer.edu.in", firstName: "Abhishek", lastName: "Soni" },
+  { email: "ruchi.arora@trainer.edu.in", firstName: "Ruchi", lastName: "Arora" },
+  { email: "kunal.saxena@trainer.edu.in", firstName: "Kunal", lastName: "Saxena" },
+  { email: "shweta.dixit@trainer.edu.in", firstName: "Shweta", lastName: "Dixit" },
+  { email: "tarun.mallik@trainer.edu.in", firstName: "Tarun", lastName: "Mallik" },
+  { email: "geeta.kulkarni@trainer.edu.in", firstName: "Geeta", lastName: "Kulkarni" },
+  { email: "yash.srivastava@trainer.edu.in", firstName: "Yash", lastName: "Srivastava" },
+  { email: "shilpa.mahajan@trainer.edu.in", firstName: "Shilpa", lastName: "Mahajan" },
+  { email: "vivek.chauhan@trainer.edu.in", firstName: "Vivek", lastName: "Chauhan" },
+  { email: "anuja.bhagat@trainer.edu.in", firstName: "Anuja", lastName: "Bhagat" },
+  { email: "dhruv.pathak@trainer.edu.in", firstName: "Dhruv", lastName: "Pathak" },
+  { email: "ishita.banerjee@trainer.edu.in", firstName: "Ishita", lastName: "Banerjee" },
+  { email: "arjun.rao@trainer.edu.in", firstName: "Arjun", lastName: "Rao" },
+  { email: "madhuri.das@trainer.edu.in", firstName: "Madhuri", lastName: "Das" },
+  { email: "sachin.khare@trainer.edu.in", firstName: "Sachin", lastName: "Khare" },
+  { email: "shalini.chopra@trainer.edu.in", firstName: "Shalini", lastName: "Chopra" },
+  { email: "karan.bajpai@trainer.edu.in", firstName: "Karan", lastName: "Bajpai" },
+  { email: "tanya.modi@trainer.edu.in", firstName: "Tanya", lastName: "Modi" },
+  { email: "rohit.shukla@trainer.edu.in", firstName: "Rohit", lastName: "Shukla" },
+  { email: "nidhi.vyas@trainer.edu.in", firstName: "Nidhi", lastName: "Vyas" },
+  { email: "aman.seth@trainer.edu.in", firstName: "Aman", lastName: "Seth" },
+  { email: "prachi.tandon@trainer.edu.in", firstName: "Prachi", lastName: "Tandon" },
+  { email: "lokesh.tripathi@trainer.edu.in", firstName: "Lokesh", lastName: "Tripathi" },
+  { email: "smita.garg@trainer.edu.in", firstName: "Smita", lastName: "Garg" },
+  { email: "ankit.bisht@trainer.edu.in", firstName: "Ankit", lastName: "Bisht" },
+  { email: "namita.singhal@trainer.edu.in", firstName: "Namita", lastName: "Singhal" },
+  { email: "hemant.negi@trainer.edu.in", firstName: "Hemant", lastName: "Negi" },
+  { email: "surbhi.kohli@trainer.edu.in", firstName: "Surbhi", lastName: "Kohli" },
+  { email: "nitesh.bhardwaj@trainer.edu.in", firstName: "Nitesh", lastName: "Bhardwaj" },
+  { email: "rekha.thakkar@trainer.edu.in", firstName: "Rekha", lastName: "Thakkar" },
+  { email: "jayesh.jha@trainer.edu.in", firstName: "Jayesh", lastName: "Jha" },
+  { email: "roshni.menon@trainer.edu.in", firstName: "Roshni", lastName: "Menon" },
+  { email: "saurabh.pandey@trainer.edu.in", firstName: "Saurabh", lastName: "Pandey" },
+  { email: "meenakshi.pal@trainer.edu.in", firstName: "Meenakshi", lastName: "Pal" },
+  { email: "tushar.ahluwalia@trainer.edu.in", firstName: "Tushar", lastName: "Ahluwalia" },
+  { email: "urmila.bhatia@trainer.edu.in", firstName: "Urmila", lastName: "Bhatia" },
+  { email: "chirag.dutta@trainer.edu.in", firstName: "Chirag", lastName: "Dutta" },
+  { email: "varsha.kelkar@trainer.edu.in", firstName: "Varsha", lastName: "Kelkar" },
+  { email: "deepak.ranjan@trainer.edu.in", firstName: "Deepak", lastName: "Ranjan" },
+  { email: "jyoti.ganguly@trainer.edu.in", firstName: "Jyoti", lastName: "Ganguly" },
+  { email: "ashish.solanki@trainer.edu.in", firstName: "Ashish", lastName: "Solanki" },
+  { email: "payal.mukherjee@trainer.edu.in", firstName: "Payal", lastName: "Mukherjee" },
+  { email: "bhavesh.parekh@trainer.edu.in", firstName: "Bhavesh", lastName: "Parekh" },
+  { email: "richa.kashyap@trainer.edu.in", firstName: "Richa", lastName: "Kashyap" },
+  { email: "chetan.mathur@trainer.edu.in", firstName: "Chetan", lastName: "Mathur" },
+  { email: "sunaina.bhalla@trainer.edu.in", firstName: "Sunaina", lastName: "Bhalla" },
+  { email: "vinay.bhatnagar@trainer.edu.in", firstName: "Vinay", lastName: "Bhatnagar" },
+  { email: "swapna.mitra@trainer.edu.in", firstName: "Swapna", lastName: "Mitra" },
+  { email: "himanshu.lal@trainer.edu.in", firstName: "Himanshu", lastName: "Lal" },
+  { email: "vandana.trivedi@trainer.edu.in", firstName: "Vandana", lastName: "Trivedi" },
+  { email: "sandeep.mohan@trainer.edu.in", firstName: "Sandeep", lastName: "Mohan" },
+  { email: "aditi.chatterjee@trainer.edu.in", firstName: "Aditi", lastName: "Chatterjee" },
+  { email: "puneet.gill@trainer.edu.in", firstName: "Puneet", lastName: "Gill" },
+  { email: "seema.sood@trainer.edu.in", firstName: "Seema", lastName: "Sood" },
+  { email: "lalit.wadhwa@trainer.edu.in", firstName: "Lalit", lastName: "Wadhwa" },
+  { email: "farida.ansari@trainer.edu.in", firstName: "Farida", lastName: "Ansari" }
+];
+
+// =================== EQUIPMENT CONFIGURATIONS ===================
+const EQUIPMENT_CONFIGS = {
+  FITTER_MANUFACTURING: [
+    { name: "Bench Drilling Machine BD-450", manufacturer: "Siemens AG", healthRange: [85, 98], faultyChance: 0.15 },
+    { name: "Angle Grinder AG-2000 Professional", manufacturer: "Robert Bosch GmbH", healthRange: [75, 95], faultyChance: 0.20 },
+    { name: "Arc Welding Station ARC-300", manufacturer: "ABB Ltd", healthRange: [80, 96], faultyChance: 0.18 },
+    { name: "Gas Welding Setup OXY-AC-100", manufacturer: "Schneider Electric", healthRange: [82, 97], faultyChance: 0.12 },
+    { name: "MIG Welder Unit MIG-250", manufacturer: "FANUC Corporation", healthRange: [78, 94], faultyChance: 0.22 },
+    { name: "Precision Bench Vice BV-6", manufacturer: "Haas Automation", healthRange: [88, 99], faultyChance: 0.08 },
+    { name: "Hydraulic Press HP-20T", manufacturer: "DMG Mori", healthRange: [70, 92], faultyChance: 0.25 }
+  ],
+  ELECTRICAL_ENGINEERING: [
+    { name: "Electrician Training Panel ETP-5000", manufacturer: "Schneider Electric", healthRange: [83, 97], faultyChance: 0.14 },
+    { name: "PLC & VFD Advanced System", manufacturer: "Siemens AG", healthRange: [86, 98], faultyChance: 0.10 },
+    { name: "Digital Multimeter Station DMS-10", manufacturer: "Omron Corporation", healthRange: [90, 99], faultyChance: 0.06 },
+    { name: "Oscilloscope Unit OSC-100MHz", manufacturer: "Delta Electronics", healthRange: [84, 96], faultyChance: 0.13 },
+    { name: "Power Supply Module PSM-30V", manufacturer: "ABB Ltd", healthRange: [82, 95], faultyChance: 0.16 },
+    { name: "Circuit Analysis Board CAB-Pro", manufacturer: "Mitsubishi Electric", healthRange: [88, 98], faultyChance: 0.09 },
+    { name: "Motor Control Panel MCP-3Ph", manufacturer: "Yaskawa Electric", healthRange: [79, 94], faultyChance: 0.19 }
+  ],
+  WELDING_FABRICATION: [
+    { name: "Arc Welding Machine 200-300A", manufacturer: "ABB Ltd", healthRange: [76, 93], faultyChance: 0.21 },
+    { name: "Oxy-Acetylene Welding Kit Premium", manufacturer: "Robert Bosch GmbH", healthRange: [81, 96], faultyChance: 0.15 },
+    { name: "MIG/CO2 Welding Station 400A", manufacturer: "FANUC Corporation", healthRange: [74, 91], faultyChance: 0.24 },
+    { name: "VR Welding Simulator WeldSim-Pro", manufacturer: "Siemens AG", healthRange: [89, 99], faultyChance: 0.07 },
+    { name: "Plasma Cutting System PCS-50", manufacturer: "Mazak Corporation", healthRange: [77, 94], faultyChance: 0.20 },
+    { name: "Fume Extraction Unit FEU-5000", manufacturer: "Schneider Electric", healthRange: [85, 97], faultyChance: 0.11 },
+    { name: "TIG Welding Machine TIG-200AC/DC", manufacturer: "DMG Mori", healthRange: [73, 90], faultyChance: 0.26 }
+  ],
+  TOOL_DIE_MAKING: [
+    { name: "EDM Machine Electrical Discharge", manufacturer: "Makino Milling", healthRange: [80, 95], faultyChance: 0.17 },
+    { name: "CNC Jig Boring Machine JB-2000", manufacturer: "DMG Mori", healthRange: [83, 96], faultyChance: 0.14 },
+    { name: "Surface Grinder SG-500", manufacturer: "Okuma Corporation", healthRange: [78, 93], faultyChance: 0.19 },
+    { name: "Tool & Cutter Grinder TCG-350", manufacturer: "Haas Automation", healthRange: [81, 95], faultyChance: 0.16 },
+    { name: "Wire EDM Machine WEDM-300", manufacturer: "Mazak Corporation", healthRange: [84, 97], faultyChance: 0.13 },
+    { name: "Precision Lathe PL-600", manufacturer: "FANUC Corporation", healthRange: [79, 94], faultyChance: 0.18 },
+    { name: "Milling Machine Universal Mill-5", manufacturer: "Siemens AG", healthRange: [77, 92], faultyChance: 0.20 }
+  ],
+  ADDITIVE_MANUFACTURING: [
+    { name: "FDM 3D Printer Ultimaker S5", manufacturer: "Siemens AG", healthRange: [87, 98], faultyChance: 0.10 },
+    { name: "Resin 3D Printer Formlabs 3+", manufacturer: "Robert Bosch GmbH", healthRange: [85, 97], faultyChance: 0.12 },
+    { name: "Laser Engraver CO2 LE-100W", manufacturer: "DMG Mori", healthRange: [82, 95], faultyChance: 0.15 },
+    { name: "CNC Laser Cutter LC-150W", manufacturer: "Mazak Corporation", healthRange: [80, 94], faultyChance: 0.17 },
+    { name: "Post-Curing Station UV-Chamber", manufacturer: "Schneider Electric", healthRange: [90, 99], faultyChance: 0.06 },
+    { name: "Filament Dryer FD-Pro", manufacturer: "Delta Electronics", healthRange: [92, 99], faultyChance: 0.05 },
+    { name: "3D Scanner Handheld HS-2000", manufacturer: "ABB Ltd", healthRange: [86, 97], faultyChance: 0.11 }
+  ],
+  SOLAR_INSTALLER_PV: [
+    { name: "Solar Inverter Training Unit 5kW", manufacturer: "Schneider Electric", healthRange: [84, 96], faultyChance: 0.13 },
+    { name: "PV Panel Testing Station PVTS-10", manufacturer: "ABB Ltd", healthRange: [88, 98], faultyChance: 0.09 },
+    { name: "Battery Bank Simulator 48V-200Ah", manufacturer: "Siemens AG", healthRange: [81, 95], faultyChance: 0.16 },
+    { name: "Solar Irradiance Meter SIM-2000", manufacturer: "Omron Corporation", healthRange: [90, 99], faultyChance: 0.06 },
+    { name: "Installation Tool Kit Professional", manufacturer: "Robert Bosch GmbH", healthRange: [85, 97], faultyChance: 0.11 },
+    { name: "Charge Controller Testing Unit", manufacturer: "Delta Electronics", healthRange: [83, 96], faultyChance: 0.14 },
+    { name: "Grid Tie System Simulator GTSS-5", manufacturer: "Mitsubishi Electric", healthRange: [79, 94], faultyChance: 0.18 }
+  ],
+  MATERIAL_TESTING_QUALITY: [
+    { name: "Universal Testing Machine UTM-100kN", manufacturer: "Makino Milling", healthRange: [82, 96], faultyChance: 0.15 },
+    { name: "Compression Testing Machine CTM-2000", manufacturer: "DMG Mori", healthRange: [80, 95], faultyChance: 0.17 },
+    { name: "Charpy Impact Tester CIT-300J", manufacturer: "Okuma Corporation", healthRange: [84, 97], faultyChance: 0.13 },
+    { name: "Rockwell Hardness Tester RHT-Pro", manufacturer: "Haas Automation", healthRange: [87, 98], faultyChance: 0.10 },
+    { name: "Brinell Hardness Tester BHT-3000", manufacturer: "Mazak Corporation", healthRange: [86, 97], faultyChance: 0.11 },
+    { name: "Optical Comparator OC-400", manufacturer: "Siemens AG", healthRange: [89, 99], faultyChance: 0.08 },
+    { name: "Environmental Test Chamber ETC-1000L", manufacturer: "Schneider Electric", healthRange: [78, 93], faultyChance: 0.19 },
+    { name: "Metallurgical Microscope MM-5000", manufacturer: "ABB Ltd", healthRange: [91, 99], faultyChance: 0.05 }
+  ],
+  ADVANCED_MANUFACTURING_CNC: [
+    { name: "CNC VMC 3-Axis Haas VF-2", manufacturer: "Haas Automation", healthRange: [81, 95], faultyChance: 0.16 },
+    { name: "CNC VMC 4-Axis DMG Mori", manufacturer: "DMG Mori", healthRange: [83, 96], faultyChance: 0.14 },
+    { name: "CNC Lathe 2-Axis Mazak QuickTurn", manufacturer: "Mazak Corporation", healthRange: [79, 94], faultyChance: 0.18 },
+    { name: "CNC Lathe with Live Tools", manufacturer: "Okuma Corporation", healthRange: [82, 95], faultyChance: 0.15 },
+    { name: "CNC Router 5-Axis AXYZ", manufacturer: "Makino Milling", healthRange: [80, 94], faultyChance: 0.17 },
+    { name: "CNC Plasma Cutter Hypertherm", manufacturer: "FANUC Corporation", healthRange: [77, 92], faultyChance: 0.20 },
+    { name: "CAD/CAM Workstation Pro-1", manufacturer: "Siemens AG", healthRange: [90, 99], faultyChance: 0.06 },
+    { name: "CAD/CAM Workstation Pro-2", manufacturer: "Siemens AG", healthRange: [89, 98], faultyChance: 0.07 },
+    { name: "Tool Presetter Digital TP-3000", manufacturer: "Mitsubishi Electric", healthRange: [86, 97], faultyChance: 0.11 }
+  ],
+  AUTOMOTIVE_MECHANIC: [
+    { name: "Petrol Engine Training Model 4-Cyl", manufacturer: "Robert Bosch GmbH", healthRange: [80, 95], faultyChance: 0.17 },
+    { name: "Diesel Engine Test Bench 6-Cyl", manufacturer: "Siemens AG", healthRange: [78, 93], faultyChance: 0.19 },
+    { name: "Transmission Training Unit Manual", manufacturer: "ABB Ltd", healthRange: [83, 96], faultyChance: 0.14 },
+    { name: "Automatic Transmission Simulator", manufacturer: "Schneider Electric", healthRange: [81, 95], faultyChance: 0.16 },
+    { name: "Brake System Hydraulic Trainer", manufacturer: "Yaskawa Electric", healthRange: [85, 97], faultyChance: 0.12 },
+    { name: "Electrical System Training Board", manufacturer: "Delta Electronics", healthRange: [88, 98], faultyChance: 0.09 },
+    { name: "AC System Trainer R134a", manufacturer: "Omron Corporation", healthRange: [82, 96], faultyChance: 0.15 },
+    { name: "Suspension & Steering Trainer", manufacturer: "Mitsubishi Electric", healthRange: [79, 94], faultyChance: 0.18 }
+  ]
+};
+
+const STATUSES = ["OPERATIONAL", "IN_USE", "IDLE", "MAINTENANCE", "FAULTY"];
+const MAINTENANCE_TYPES = ["Preventive Maintenance", "Corrective Maintenance", "Calibration", "Inspection", "Cleaning", "Parts Replacement"];
+
+// Helper functions
+function randomInRange(min, max) {
+  return min + Math.random() * (max - min);
 }
 
-/**
- * Generates random float between min (inclusive) and max (exclusive) with fixed decimal places
- */
-function getRandomFloat(min, max, decimals = 2) {
-  const str = (Math.random() * (max - min) + min).toFixed(decimals);
-  return parseFloat(str);
+function randomDate(daysBack) {
+  return new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
 }
 
-/**
- * Subtracts days from a given date
- */
-function subDays(date, days) {
-  const result = new Date(date);
-  result.setDate(result.getDate() - days);
-  return result;
+function getEquipmentStatus(healthScore, isFaulty) {
+  if (isFaulty) return "FAULTY";
+  if (healthScore < 75) return "MAINTENANCE";
+  if (Math.random() > 0.7) return "IN_USE";
+  if (Math.random() > 0.5) return "OPERATIONAL";
+  return "IDLE";
 }
 
 async function main() {
-  console.log("Seeding started...");
-
-  // 1. =================== CLEAN DATABASE ===================
-  // We must delete in the reverse order of creation to respect foreign key constraints.
-  console.log("Cleaning database...");
-  await prisma.report.deleteMany();
-  await prisma.chatMessage.deleteMany();
-  await prisma.notification.deleteMany();
+  console.log("🌱 Starting comprehensive seed...");
+  console.log("🔐 Universal Password: " + UNIVERSAL_PASSWORD);
+  
+  // =================== CLEAN EXISTING DATA ===================
+  console.log("\n🧹 Cleaning existing data...");
+  await prisma.reorderRequest.deleteMany();
+  await prisma.breakdownEquipment.deleteMany();
   await prisma.alert.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.maintenanceRecord.deleteMany();
   await prisma.maintenanceLog.deleteMany();
   await prisma.usageAnalytics.deleteMany();
-  await prisma.departmentAnalytics.deleteMany();
   await prisma.sensorData.deleteMany();
+  await prisma.departmentAnalytics.deleteMany();
   await prisma.equipmentStatus.deleteMany();
   await prisma.equipment.deleteMany();
   await prisma.user.deleteMany();
   await prisma.lab.deleteMany();
   await prisma.institute.deleteMany();
-  await prisma.oTP.deleteMany();
-  await prisma.systemConfig.deleteMany();
-  console.log("Database cleaned.");
 
-  // 2. =================== HASH PASSWORD ===================
-  const hashedPassword = await bcrypt.hash("Password123!", 10);
+  // =================== CREATE INSTITUTES ===================
+  console.log("\n🏢 Creating institutes...");
+  const institutes = [];
+  for (const inst of INSTITUTES_DATA) {
+    const institute = await prisma.institute.create({ data: inst });
+    institutes.push(institute);
+    console.log(`  ✓ ${institute.name}`);
+  }
 
-  // 3. =================== CREATE INSTITUTES ===================
-  console.log("Creating institutes...");
-  const itiPusa = await prisma.institute.create({
-    data: {
-      instituteId: "ITI_PUSA",
-      name: "ITI Pusa, New Delhi",
-    },
-  });
-
-  const atiMumbai = await prisma.institute.create({
-    data: {
-      instituteId: "ATI_MUMBAI",
-      name: "ATI Mumbai",
-    },
-  });
-
-  // 4. =================== CREATE LABS ===================
-  console.log("Creating labs...");
-  const pusaFitterLab = await prisma.lab.create({
-    data: {
-      labId: "ITI_PUSA_FITTER_01",
-      name: "Fitter Workshop 01",
-      instituteId: itiPusa.instituteId,
-      department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-    },
-  });
-
-  const pusaElectricalLab = await prisma.lab.create({
-    data: {
-      labId: "ITI_PUSA_ELEC_01",
-      name: "Electrical Lab 01",
-      instituteId: itiPusa.instituteId,
-      department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-    },
-  });
-
-  const mumbaiCncLab = await prisma.lab.create({
-    data: {
-      labId: "ATI_MUMBAI_CNC_01",
-      name: "Advanced CNC Lab",
-      instituteId: atiMumbai.instituteId,
-      department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-    },
-  });
-
-  const mumbaiWeldingLab = await prisma.lab.create({
-    data: {
-      labId: "ATI_MUMBAI_WELD_01",
-      name: "Welding & Fabrication Workshop",
-      instituteId: atiMumbai.instituteId,
-      department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-    },
-  });
-
-  // 5. =================== CREATE USERS ===================
-  console.log("Creating users...");
-
-  // --- Policy Maker ---
-  const policyMakerEmail = "policy.maker@gov.in";
-  const policyMaker = await prisma.user.create({
-    data: {
-      email: policyMakerEmail,
-      password: hashedPassword,
-      firstName: "Policy",
-      lastName: "Maker",
-      role: USER_ROLE_ENUM.POLICY_MAKER,
-      emailVerified: true,
-      isActive: true,
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values to satisfy unique index ---
-      googleId: `cred_${policyMakerEmail}`,
-      githubId: `cred_${policyMakerEmail}`,
-    },
-  });
-
-  // --- ITI Pusa Users ---
-  const pusaFitterManagerEmail = "manager.pusa.fitter@iti.in";
-  const pusaFitterManager = await prisma.user.create({
-    data: {
-      email: pusaFitterManagerEmail,
-      password: hashedPassword,
-      firstName: "Fitter",
-      lastName: "Manager (Pusa)",
-      role: USER_ROLE_ENUM.LAB_MANAGER,
-      emailVerified: true,
-      isActive: true,
-      instituteId: itiPusa.instituteId,
-      department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-      labId: pusaFitterLab.id, // Internal ObjectId
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values ---
-      googleId: `cred_${pusaFitterManagerEmail}`,
-      githubId: `cred_${pusaFitterManagerEmail}`,
-    },
-  });
-
-  const pusaFitterTrainer1Email = "trainer1.pusa.fitter@iti.in";
-  const pusaFitterTrainer1 = await prisma.user.create({
-    data: {
-      email: pusaFitterTrainer1Email,
-      password: hashedPassword,
-      firstName: "Fitter",
-      lastName: "Trainer 1",
-      role: USER_ROLE_ENUM.TRAINER,
-      emailVerified: true,
-      isActive: true,
-      instituteId: itiPusa.instituteId,
-      department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-      labId: pusaFitterLab.id,
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values ---
-      googleId: `cred_${pusaFitterTrainer1Email}`,
-      githubId: `cred_${pusaFitterTrainer1Email}`,
-    },
-  });
-
-  const pusaElectricalManagerEmail = "manager.pusa.elec@iti.in";
-  const pusaElectricalManager = await prisma.user.create({
-    data: {
-      email: pusaElectricalManagerEmail,
-      password: hashedPassword,
-      firstName: "Electrical",
-      lastName: "Manager (Pusa)",
-      role: USER_ROLE_ENUM.LAB_MANAGER,
-      emailVerified: true,
-      isActive: true,
-      instituteId: itiPusa.instituteId,
-      department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-      labId: pusaElectricalLab.id,
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values ---
-      googleId: `cred_${pusaElectricalManagerEmail}`,
-      githubId: `cred_${pusaElectricalManagerEmail}`,
-    },
-  });
-
-  const pusaElectricalTrainer1Email = "trainer1.pusa.elec@iti.in";
-  const pusaElectricalTrainer1 = await prisma.user.create({
-    data: {
-      email: pusaElectricalTrainer1Email,
-      password: hashedPassword,
-      firstName: "Electrical",
-      lastName: "Trainer 1",
-      role: USER_ROLE_ENUM.TRAINER,
-      emailVerified: true,
-      isActive: true,
-      instituteId: itiPusa.instituteId,
-      department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-      labId: pusaElectricalLab.id,
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values ---
-      googleId: `cred_${pusaElectricalTrainer1Email}`,
-      githubId: `cred_${pusaElectricalTrainer1Email}`,
-    },
-  });
-
-  // --- ATI Mumbai Users ---
-  const mumbaiCncManagerEmail = "manager.mumbai.cnc@ati.in";
-  const mumbaiCncManager = await prisma.user.create({
-    data: {
-      email: mumbaiCncManagerEmail,
-      password: hashedPassword,
-      firstName: "CNC",
-      lastName: "Manager (Mumbai)",
-      role: USER_ROLE_ENUM.LAB_MANAGER,
-      emailVerified: true,
-      isActive: true,
-      instituteId: atiMumbai.instituteId,
-      department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-      labId: mumbaiCncLab.id,
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values ---
-      googleId: `cred_${mumbaiCncManagerEmail}`,
-      githubId: `cred_${mumbaiCncManagerEmail}`,
-    },
-  });
-
-  const mumbaiCncTrainer1Email = "trainer1.mumbai.cnc@ati.in";
-  const mumbaiCncTrainer1 = await prisma.user.create({
-    data: {
-      email: mumbaiCncTrainer1Email,
-      password: hashedPassword,
-      firstName: "CNC",
-      lastName: "Trainer 1",
-      role: USER_ROLE_ENUM.TRAINER,
-      emailVerified: true,
-      isActive: true,
-      instituteId: atiMumbai.instituteId,
-      department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-      labId: mumbaiCncLab.id,
-      authProvider: "CREDENTIAL",
-      // --- FIX: Add unique, non-null values ---
-      googleId: `cred_${mumbaiCncTrainer1Email}`,
-      githubId: `cred_${mumbaiCncTrainer1Email}`,
-    },
-  });
-
-  // Group users for notifications
-  const pusaFitterUsers = [pusaFitterManager.id, pusaFitterTrainer1.id];
-  const pusaElectricalUsers = [
-    pusaElectricalManager.id,
-    pusaElectricalTrainer1.id,
-  ];
-  const mumbaiCncUsers = [mumbaiCncManager.id, mumbaiCncTrainer1.id];
-
-  // 6. =================== CREATE EQUIPMENT ===================
-  console.log("Creating equipment with related data...");
-
-  // --- Pusa Fitter Lab Equipment (3) ---
-  const fitterEquip1 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ITI_PUSA_FIT_001",
-      name: "Bench Drilling Machine",
-      department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-      fitterEquipmentName: "BENCH_DRILLING_MACHINE",
-      labId: pusaFitterLab.id,
-      manufacturer: "Bosch",
-      model: "GBM 13 RE",
-      purchaseDate: subDays(new Date(), 400),
-      warrantyExpiry: subDays(new Date(), 35),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.OPERATIONAL,
-          healthScore: 92.5,
-          lastMaintenanceDate: subDays(new Date(), 20),
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-          temperature: 42.1,
-          efficiency: 91.0,
-          totalUptime: 230.5,
-          totalDowntime: 10.2,
-          utilizationRate: 70.1,
-          vibration: 0.2,
-        },
-      },
-      usageAnalytics: {
-        create: [
-          { date: subDays(new Date(), 1), totalUsageHours: 6, totalDowntime: 0, utilizationRate: 75, energyConsumed: 12.5 },
-          { date: subDays(new Date(), 2), totalUsageHours: 5, totalDowntime: 1, utilizationRate: 62.5, energyConsumed: 10.1 },
-          { date: subDays(new Date(), 3), totalUsageHours: 7, totalDowntime: 0, utilizationRate: 87.5, energyConsumed: 14.3 },
-        ],
-      },
-      alerts: {
-        create: [
-          {
-            type: ALERT_TYPE.WARRANTY_EXPIRING,
-            severity: ALERT_SEVERITY.LOW,
-            title: "Warranty Expiring Soon",
-            message: "Warranty for Bench Drilling Machine expires in 5 days.",
-            isResolved: false,
-            notifications: {
-              create: pusaFitterUsers.map(userId => ({
-                userId: userId,
-                title: "Warranty Expiring Soon",
-                message: "Warranty for Bench Drilling Machine expires in 5 days.",
-                type: NOTIFICATION_TYPE.ALERT,
-              })),
-            },
-          },
-        ],
-      },
-    },
-  });
-
-  const fitterEquip2 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ITI_PUSA_FIT_002",
-      name: "MIG/CO2 Welding Machine",
-      department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-      fitterEquipmentName: "MIG_CO2_WELDING_MACHINE",
-      labId: pusaFitterLab.id,
-      manufacturer: "ESAB",
-      model: "Buddy Mig 200i",
-      purchaseDate: subDays(new Date(), 200),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.FAULTY,
-          healthScore: 35.0,
-          lastMaintenanceDate: subDays(new Date(), 80),
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-          temperature: 85.0,
-          efficiency: 40.0,
-          totalUptime: 80.0,
-          totalDowntime: 25.5,
-          utilizationRate: 45.0,
-          vibration: 1.8,
-        },
-      },
-      alerts: {
-        create: [
-          {
-            type: ALERT_TYPE.FAULT_DETECTED,
-            severity: ALERT_SEVERITY.CRITICAL,
-            title: "Equipment Fault",
-            message: "MIG Welder reports critical power fault. Immediate attention required.",
-            isResolved: false,
-            notifications: {
-              create: pusaFitterUsers.map(userId => ({
-                userId: userId,
-                title: "CRITICAL: Equipment Fault",
-                message: "MIG Welder reports critical power fault.",
-                type: NOTIFICATION_TYPE.ALERT,
-              })),
-            },
-          },
-           {
-            type: ALERT_TYPE.LOW_HEALTH_SCORE,
-            severity: ALERT_SEVERITY.HIGH,
-            title: "Low Health Score",
-            message: "Health score dropped to 35%.",
-            isResolved: false,
-          },
-        ],
-      },
-    },
-  });
-  
-  const fitterEquip3 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ITI_PUSA_FIT_003",
-      name: "Angle Grinder (Portable)",
-      department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-      fitterEquipmentName: "ANGLE_GRINDER_PORTABLE",
-      labId: pusaFitterLab.id,
-      manufacturer: "Dewalt",
-      model: "DW810",
-      purchaseDate: subDays(new Date(), 600),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.IDLE,
-          healthScore: 88.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.FITTER_MANUFACTURING,
-          totalUptime: 450.0,
-          totalDowntime: 30.0,
-          utilizationRate: 65.0,
-        },
-      },
-    },
-  });
-
-  // --- Pusa Electrical Lab Equipment (3) ---
-  const elecEquip1 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ITI_PUSA_ELEC_001",
-      name: "Electrician Training Panel",
-      department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-      electricalEquipmentName: "ELECTRICIAN_TRAINING_PANEL",
-      labId: pusaElectricalLab.id,
-      manufacturer: "Scientech",
-      model: "ST201",
-      purchaseDate: subDays(new Date(), 300),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.IN_USE,
-          healthScore: 98.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-          temperature: 35.0,
-          efficiency: 99.0,
-          totalUptime: 150.0,
-          totalDowntime: 2.0,
-          utilizationRate: 80.0,
-          voltage: 230.5,
-          current: 4.8,
-          powerFactor: 0.98
-        },
-      },
-    },
-  });
-
-  const elecEquip2 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ITI_PUSA_ELEC_002",
-      name: "Advanced Electrician Setup (PLC/VFD)",
-      department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-      electricalEquipmentName: "ADVANCED_ELECTRICIAN_SETUP_PLC_VFD",
-      labId: pusaElectricalLab.id,
-      manufacturer: "Siemens",
-      model: "S7-1200 Trainer",
-      purchaseDate: subDays(new Date(), 150),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.MAINTENANCE,
-          healthScore: 75.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-          temperature: 45.0,
-          efficiency: 95.0,
-          totalUptime: 90.0,
-          totalDowntime: 8.0,
-          utilizationRate: 60.0,
-          voltage: 228.0,
-          current: 5.1,
-          powerFactor: 0.95
-        },
-      },
-    },
-  });
-
-  const elecEquip3 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ITI_PUSA_ELEC_003",
-      name: "Bench Drilling Machine",
-      department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-      electricalEquipmentName: "BENCH_DRILLING_MACHINE",
-      labId: pusaElectricalLab.id,
-      manufacturer: "Local",
-      model: "LDM-100",
-      purchaseDate: subDays(new Date(), 800),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.IDLE,
-          healthScore: 82.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.ELECTRICAL_ENGINEERING,
-          totalUptime: 600.0,
-          totalDowntime: 50.0,
-          utilizationRate: 55.0,
-        },
-      },
-    },
-  });
-
-  // --- Mumbai CNC Lab Equipment (3) ---
-  const cncEquip1 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ATI_MUMBAI_CNC_001",
-      name: "CNC Vertical Machining Center",
-      department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-      advancedManufacturingEquipmentName: "CNC_VERTICAL_MACHINING_CENTER_3_4_AXIS",
-      labId: mumbaiCncLab.id,
-      manufacturer: "Haas",
-      model: "VF-2",
-      purchaseDate: subDays(new Date(), 500),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.IN_CLASS,
-          healthScore: 95.0,
-          isOperatingInClass: true,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-          temperature: 55.0,
-          efficiency: 94.0,
-          totalUptime: 800.0,
-          totalDowntime: 20.0,
-          utilizationRate: 85.0,
-          spindleSpeed: 7500,
-          feedRate: 1500,
-          toolWear: 0.2,
-          vibration: 0.1
-        },
-      },
-      usageAnalytics: {
-        create: [
-          { date: subDays(new Date(), 1), totalUsageHours: 7, totalDowntime: 0, utilizationRate: 87.5, energyConsumed: 40.5, classSessions: 2 },
-          { date: subDays(new Date(), 2), totalUsageHours: 6, totalDowntime: 0, utilizationRate: 75.0, energyConsumed: 35.1, classSessions: 2 },
-        ],
-      },
-    },
-  });
-
-  const cncEquip2 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ATI_MUMBAI_CNC_002",
-      name: "CNC Lathe (2 Axis)",
-      department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-      advancedManufacturingEquipmentName: "CNC_LATHE_2_AXIS",
-      labId: mumbaiCncLab.id,
-      manufacturer: "Fanuc",
-      model: "Series 0i-TF",
-      purchaseDate: subDays(new Date(), 500),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.WARNING,
-          healthScore: 65.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.ADVANCED_MANUFACTURING_CNC,
-          temperature: 78.0,
-          efficiency: 80.0,
-          totalUptime: 750.0,
-          totalDowntime: 40.0,
-          utilizationRate: 70.0,
-          spindleSpeed: 4000,
-          feedRate: 1000,
-          toolWear: 0.8,
-          vibration: 0.7
-        },
-      },
-      alerts: {
-        create: [
-          {
-            type: ALERT_TYPE.HIGH_TEMPERATURE,
-            severity: ALERT_SEVERITY.HIGH,
-            title: "High Spindle Temperature",
-            message: "Spindle temperature reached 78C. Nearing limit.",
-            isResolved: false,
-            notifications: {
-              create: mumbaiCncUsers.map(userId => ({
-                userId: userId,
-                title: "High Spindle Temperature",
-                message: "CNC Lathe spindle temperature is high (78C).",
-                type: NOTIFICATION_TYPE.ALERT,
-              })),
-            },
-          },
-        ],
-      },
-    },
-  });
-
-  const cncEquip3 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ATI_MUMBAI_CNC_003",
-      name: "3D Printer (FDM)",
-      department: DEPARTMENT_ENUM.ADDITIVE_MANUFACTURING,
-      additiveManufacturingEquipmentName: "THREE_D_PRINTER_FDM_RESIN",
-      labId: mumbaiCncLab.id, 
-      manufacturer: "Prusa",
-      model: "i3 MK3S+",
-      purchaseDate: subDays(new Date(), 300),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.IDLE,
-          healthScore: 99.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.ADDITIVE_MANUFACTURING,
-          temperature: 40.0,
-          efficiency: 98.0,
-          totalUptime: 300.0,
-          totalDowntime: 5.0,
-          utilizationRate: 60.0,
-          printQuality: 99.5,
-          materialUsage: 10.5
-        },
-      },
-    },
-  });
-
-  // --- Mumbai Welding Lab Equipment (3) ---
-  const weldEquip1 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ATI_MUMBAI_WELD_001",
-      name: "Arc Welding Machine (300A)",
-      department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-      weldingEquipmentName: "ARC_WELDING_MACHINE_200_300A",
-      labId: mumbaiWeldingLab.id,
-      manufacturer: "Lincoln Electric",
-      model: "Idealarc 250",
-      purchaseDate: subDays(new Date(), 600),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.OPERATIONAL,
-          healthScore: 90.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-          temperature: 50.0,
-          efficiency: 90.0,
-          totalUptime: 500.0,
-          totalDowntime: 20.0,
-          utilizationRate: 70.0,
-          vibration: 0.3,
-          arcStability: 95.0,
-        },
-      },
-    },
-  });
-
-  const weldEquip2 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ATI_MUMBAI_WELD_002",
-      name: "Gas Welding Kit (Oxy-Acetylene)",
-      department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-      weldingEquipmentName: "GAS_WELDING_KIT_OXY_ACETYLENE",
-      labId: mumbaiWeldingLab.id,
-      manufacturer: "Victor",
-      model: "Performer",
-      purchaseDate: subDays(new Date(), 400),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.IDLE,
-          healthScore: 99.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-          totalUptime: 300.0,
-          totalDowntime: 5.0,
-          utilizationRate: 50.0,
-        },
-      },
-    },
-  });
-  
-  const weldEquip3 = await prisma.equipment.create({
-    data: {
-      equipmentId: "ATI_MUMBAI_WELD_003",
-      name: "VR/AR Welding Simulator",
-      department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-      weldingEquipmentName: "VR_AR_WELDING_SIMULATOR",
-      labId: mumbaiWeldingLab.id,
-      manufacturer: "SimWeld",
-      model: "Pro",
-      purchaseDate: subDays(new Date(), 90),
-      status: {
-        create: {
-          status: OPERATIONAL_STATUS.OPERATIONAL,
-          healthScore: 100.0,
-        },
-      },
-      analyticsParams: {
-        create: {
-          department: DEPARTMENT_ENUM.WELDING_FABRICATION,
-          totalUptime: 80.0,
-          totalDowntime: 1.0,
-          utilizationRate: 85.0,
-        },
-      },
-    },
-  });
-
-  // 7. =================== CREATE MAINTENANCE LOGS ===================
-  console.log("Creating maintenance logs...");
-  await prisma.maintenanceLog.create({
-    data: {
-      equipmentId: fitterEquip1.id,
-      type: MAINTENANCE_TYPE.PREVENTIVE,
-      status: "COMPLETED", // Use string directly
-      scheduledDate: subDays(new Date(), 20),
-      completedDate: subDays(new Date(), 20),
-      description: "6-month preventive maintenance.",
-      cost: 1500.0,
-      technicianId: pusaFitterManager.id,
-    },
-  });
-
-  await prisma.maintenanceLog.create({
-    data: {
-      equipmentId: fitterEquip2.id,
-      type: MAINTENANCE_TYPE.CORRECTIVE,
-      status: "IN_PROGRESS", // Use string directly
-      scheduledDate: subDays(new Date(), 1),
-      description: "Investigating critical power fault.",
-      technicianId: pusaFitterManager.id,
-    },
-  });
-
-  await prisma.maintenanceLog.create({
-    data: {
-      equipmentId: elecEquip2.id,
-      type: MAINTENANCE_TYPE.ROUTINE,
-      status: "SCHEDULED", // Use string directly
-      scheduledDate: new Date(),
-      description: "Calibrating PLC module.",
-      technicianId: pusaElectricalManager.id,
-    },
-  });
-
-  // 8. =================== CREATE REPORTS ===================
-  console.log("Creating reports...");
-  await prisma.report.create({
-    data: {
-      reportType: REPORT_TYPE.MONTHLY_SUMMARY,
-      title: "Monthly Summary - ITI Pusa - June 2024",
-      dateFrom: new Date("2024-06-01T00:00:00.000Z"),
-      dateTo: new Date("2024-06-30T23:59:59.000Z"),
-      generatedBy: pusaFitterManager.id,
-      data: {
-        summary: "Overall health stable. Fitter lab requires attention.",
-        equipmentCount: 6,
-        avgHealth: 85.2,
-      },
-    },
-  });
-
-  await prisma.report.create({
-    data: {
-      reportType: REPORT_TYPE.DEPARTMENT_SUMMARY,
-      title: "All Institutes - CNC Department - Q2 2024",
-      dateFrom: new Date("2024-04-01T00:00:00.000Z"),
-      dateTo: new Date("2024-06-30T23:59:59.000Z"),
-      generatedBy: policyMaker.id,
-      data: {
-        summary: "CNC equipment usage is high across all ATIs.",
-        totalUptime: 1550,
-        totalAlerts: 15,
-      },
-    },
-  });
-
-  // 9. =================== CREATE CHAT MESSAGES ===================
-  console.log("Creating chat messages...");
-  await prisma.chatMessage.createMany({
-    data: [
-      {
-        userId: pusaFitterTrainer1.id,
-        message: "What is the status of the MIG welder?",
-        response: "The MIG welder (ITI_PUSA_FIT_002) is currently marked as FAULTY with a health score of 35%. A critical power fault was detected.",
-        intent: "GET_STATUS"
-      },
-      {
-        userId: pusaFitterTrainer1.id,
-        message: "Show me recent alerts.",
-        response: "You have 1 unresolved critical alert for ITI_PUSA_FIT_002 (Equipment Fault) and 1 unresolved low alert for ITI_PUSA_FIT_001 (Warranty Expiring Soon).",
-        intent: "GET_ALERTS"
+  // =================== CREATE LABS (2 per department per institute) ===================
+  console.log("\n🔬 Creating labs (2 labs per department)...");
+  const labs = [];
+  for (let i = 0; i < institutes.length; i++) {
+    const institute = institutes[i];
+    for (let deptIdx = 0; deptIdx < DEPARTMENTS.length; deptIdx++) {
+      const department = DEPARTMENTS[deptIdx];
+      // Create 2 labs per department
+      for (let labNum = 1; labNum <= 2; labNum++) {
+        const lab = await prisma.lab.create({
+          data: {
+            labId: `${institute.instituteId}_${department}_LAB_${labNum}`,
+            name: `${institute.name} - ${department.replace(/_/g, " ")} Lab ${labNum}`,
+            instituteId: institute.instituteId,
+            department
+          }
+        });
+        labs.push(lab);
+        console.log(`  ✓ ${lab.name}`);
       }
-    ]
-  });
+    }
+  }
 
-  console.log("Seeding finished successfully!");
+  // =================== CREATE USERS ===================
+  const hashedPassword = await bcrypt.hash(UNIVERSAL_PASSWORD, 10);
+  
+  // Policy Makers
+  console.log("\n👔 Creating Policy Makers...");
+  const policyMakers = [];
+  for (const pm of POLICY_MAKERS) {
+    const user = await prisma.user.create({
+      data: {
+        email: pm.email,
+        password: hashedPassword,
+        firstName: pm.firstName,
+        lastName: pm.lastName,
+        role: "POLICY_MAKER",
+        emailVerified: true,
+        isActive: true
+      }
+    });
+    policyMakers.push(user);
+    console.log(`  ✓ ${user.firstName} ${user.lastName} - ${user.email}`);
+  }
+
+  // Lab Managers
+  console.log("\n👨‍💼 Creating Lab Managers...");
+  const labManagers = [];
+  for (const lm of LAB_MANAGERS) {
+    const institute = institutes[lm.instituteIndex];
+    const instituteLabs = labs.filter(l => l.instituteId === institute.instituteId);
+    const lab = instituteLabs[0]; // Assign to first lab
+    
+    const user = await prisma.user.create({
+      data: {
+        email: lm.email,
+        password: hashedPassword,
+        firstName: lm.firstName,
+        lastName: lm.lastName,
+        role: "LAB_MANAGER",
+        department: lab.department,
+        instituteId: institute.instituteId,
+        labId: lab.id,
+        emailVerified: true,
+        isActive: true
+      }
+    });
+    labManagers.push(user);
+    console.log(`  ✓ ${user.firstName} ${user.lastName} - ${user.email} (${institute.name})`);
+  }
+
+  // Trainers (3-4 per lab)
+  console.log("\n👨‍🏫 Creating Trainers...");
+  const trainers = [];
+  let trainerIndex = 0;
+  
+  for (const lab of labs) {
+    const numTrainers = 3 + Math.floor(Math.random() * 2); // 3-4 trainers per lab
+    
+    for (let i = 0; i < numTrainers && trainerIndex < TRAINERS.length; i++) {
+      const trainerData = TRAINERS[trainerIndex];
+      const user = await prisma.user.create({
+        data: {
+          email: trainerData.email,
+          password: hashedPassword,
+          firstName: trainerData.firstName,
+          lastName: trainerData.lastName,
+          role: "TRAINER",
+          department: lab.department,
+          instituteId: lab.instituteId,
+          labId: lab.id,
+          emailVerified: true,
+          isActive: true
+        }
+      });
+      trainers.push(user);
+      trainerIndex++;
+    }
+  }
+  console.log(`  ✓ Created ${trainers.length} trainers across all labs`);
+
+  // =================== CREATE EQUIPMENT ===================
+  console.log("\n⚙️ Creating equipment...");
+  let equipmentIdCounter = 1;
+  let firebaseLabFound = false;
+  const allEquipment = [];
+  const faultyEquipment = [];
+  
+  for (const lab of labs) {
+    const configs = EQUIPMENT_CONFIGS[lab.department] || [];
+    const numEquipment = 6 + Math.floor(Math.random() * 4); // 6-9 equipment per lab
+    
+    // Firebase lab: First ADVANCED_MANUFACTURING_CNC lab in ITI_JAIPUR with LAB_1
+    const isFirebaseLab = !firebaseLabFound && 
+                          lab.department === "ADVANCED_MANUFACTURING_CNC" &&
+                          lab.instituteId === "ITI_JAIPUR" &&
+                          lab.labId.includes("LAB_1");
+    
+    if (isFirebaseLab) {
+      firebaseLabFound = true;
+      console.log(`\n  🔥 Firebase-Enabled Lab: ${lab.name}`);
+    }
+    
+    for (let i = 0; i < Math.min(numEquipment, configs.length); i++) {
+      const config = configs[i];
+      const isFaulty = Math.random() < config.faultyChance;
+      const healthScore = isFaulty 
+        ? randomInRange(40, 65) 
+        : randomInRange(config.healthRange[0], config.healthRange[1]);
+      
+      const status = getEquipmentStatus(healthScore, isFaulty);
+      const temperature = randomInRange(22, 75);
+      const vibration = randomInRange(0.1, 4.8);
+      const energyConsumption = randomInRange(120, 480);
+      
+      const firebaseDeviceId = isFirebaseLab && i < 9 ? FIREBASE_DEVICE_IDS[i] : null;
+      
+      const equipment = await prisma.equipment.create({
+        data: {
+          equipmentId: `EQ-${String(equipmentIdCounter).padStart(4, "0")}`,
+          name: config.name,
+          department: lab.department,
+          manufacturer: config.manufacturer,
+          model: `${config.manufacturer.split(" ")[0]}-${1000 + Math.floor(Math.random() * 9000)}`,
+          serialNumber: `SN${Date.now()}${equipmentIdCounter}`,
+          purchaseDate: randomDate(365 * 5),
+          warrantyExpiry: new Date(2025 + Math.floor(Math.random() * 3), Math.floor(Math.random() * 12), 1),
+          labId: lab.id,
+          firebaseDeviceId,
+          isActive: true,
+          status: {
+            create: {
+              status,
+              healthScore,
+              temperature,
+              vibration,
+              energyConsumption,
+              lastMaintenanceDate: randomDate(90),
+              nextMaintenanceDate: new Date(Date.now() + (30 + Math.random() * 60) * 24 * 60 * 60 * 1000)
+            }
+          },
+          analyticsParams: {
+            create: {
+              department: lab.department,
+              temperature,
+              vibration,
+              energyConsumption,
+              efficiency: randomInRange(75, 95),
+              totalUptime: randomInRange(100, 800),
+              totalDowntime: randomInRange(5, 50),
+              utilizationRate: randomInRange(55, 92),
+              voltage: randomInRange(215, 235),
+              current: randomInRange(3, 15),
+              powerFactor: randomInRange(0.82, 0.95)
+            }
+          }
+        }
+      });
+      
+      allEquipment.push(equipment);
+      if (isFaulty) faultyEquipment.push({ equipment, lab });
+      
+      // Historical sensor data (last 48 hours)
+      const now = Date.now();
+      for (let hour = 0; hour < 48; hour++) {
+        await prisma.sensorData.create({
+          data: {
+            equipmentId: equipment.id,
+            temperature: randomInRange(20, 80),
+            vibration: randomInRange(0.1, 5),
+            energyConsumption: randomInRange(100, 500),
+            timestamp: new Date(now - hour * 60 * 60 * 1000)
+          }
+        });
+      }
+      
+      // Maintenance records (70% chance)
+      if (Math.random() > 0.3 && labManagers.length > 0) {
+        const randomManager = labManagers[Math.floor(Math.random() * labManagers.length)];
+        const maintenanceType = MAINTENANCE_TYPES[Math.floor(Math.random() * MAINTENANCE_TYPES.length)];
+        
+        await prisma.maintenanceRecord.create({
+          data: {
+            equipmentId: equipment.id,
+            markedBy: randomManager.id,
+            maintenanceType,
+            notes: `${maintenanceType} completed. Equipment inspected and verified operational.`,
+            maintenanceDate: randomDate(60)
+          }
+        });
+      }
+      
+      if (firebaseDeviceId) {
+        console.log(`    🔥 ${equipment.name} → Firebase: ${firebaseDeviceId}`);
+      }
+      
+      equipmentIdCounter++;
+    }
+    
+    console.log(`  ✓ ${lab.name}: ${Math.min(numEquipment, configs.length)} equipment`);
+  }
+
+  // =================== CREATE ALERTS ===================
+  console.log("\n⚠️ Creating alerts for faulty equipment...");
+  const alerts = [];
+  for (const { equipment } of faultyEquipment) {
+    const alertTypes = [
+      { type: "FAULT_DETECTED", severity: "CRITICAL", title: "Equipment Fault Detected", message: "Critical fault detected in equipment operation" },
+      { type: "HIGH_TEMPERATURE", severity: "HIGH", title: "High Temperature Alert", message: "Temperature exceeded safe operating limits" },
+      { type: "ABNORMAL_VIBRATION", severity: "HIGH", title: "Abnormal Vibration", message: "Vibration levels significantly higher than normal" },
+      { type: "LOW_HEALTH_SCORE", severity: "MEDIUM", title: "Low Health Score", message: "Equipment health score below acceptable threshold" }
+    ];
+    
+    const alertConfig = alertTypes[Math.floor(Math.random() * alertTypes.length)];
+    const alert = await prisma.alert.create({
+      data: {
+        equipmentId: equipment.id,
+        type: alertConfig.type,
+        severity: alertConfig.severity,
+        title: alertConfig.title,
+        message: `${alertConfig.message} for ${equipment.name}`,
+        isResolved: Math.random() > 0.6,
+        createdAt: randomDate(30)
+      }
+    });
+    alerts.push(alert);
+  }
+  console.log(`  ✓ Created ${alerts.length} alerts`);
+
+  // =================== CREATE BREAKDOWNS & REORDER REQUESTS ===================
+  console.log("\n🔧 Creating breakdown reports and reorder requests...");
+  const breakdowns = [];
+  const reorderRequests = [];
+  
+  // Select 40% of faulty equipment for breakdowns
+  const breakdownEquipment = faultyEquipment.slice(0, Math.ceil(faultyEquipment.length * 0.4));
+  
+  for (const { equipment, lab } of breakdownEquipment) {
+    const labTrainers = trainers.filter(t => t.labId === lab.id);
+    if (labTrainers.length === 0) continue;
+    
+    const reporter = labTrainers[Math.floor(Math.random() * labTrainers.length)];
+    const breakdown = await prisma.breakdownEquipment.create({
+      data: {
+        equipmentId: equipment.id,
+        reportedBy: reporter.id,
+        reason: `Equipment malfunction detected - ${equipment.name} requires immediate attention`,
+        reportedAt: randomDate(20),
+        isAutoDetected: Math.random() > 0.5,
+        status: "REORDER_PENDING"
+      }
+    });
+    breakdowns.push(breakdown);
+    
+    // Create reorder request (80% chance)
+    if (Math.random() > 0.2) {
+      const labManager = labManagers.find(lm => lm.instituteId === lab.instituteId);
+      const urgencies = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+      const statuses = ["PENDING", "APPROVED", "REJECTED"];
+      const reqStatus = statuses[Math.floor(Math.random() * statuses.length)];
+      
+      const reorder = await prisma.reorderRequest.create({
+        data: {
+          breakdownId: breakdown.id,
+          requestedBy: reporter.id,
+          equipmentName: equipment.name,
+          quantity: 1,
+          urgency: urgencies[Math.floor(Math.random() * urgencies.length)],
+          reason: `Replacement needed due to critical malfunction in ${equipment.name}`,
+          estimatedCost: randomInRange(10000, 500000),
+          status: reqStatus,
+          reviewedBy: reqStatus !== "PENDING" ? labManager?.id : null,
+          reviewedAt: reqStatus !== "PENDING" ? randomDate(10) : null,
+          reviewComments: reqStatus === "APPROVED" 
+            ? "Approved for procurement. Critical equipment replacement authorized." 
+            : reqStatus === "REJECTED" 
+            ? "Rejected - repair option available at lower cost." 
+            : null,
+          requestedAt: randomDate(15)
+        }
+      });
+      reorderRequests.push(reorder);
+    }
+  }
+  
+  console.log(`  ✓ Created ${breakdowns.length} breakdown reports`);
+  console.log(`  ✓ Created ${reorderRequests.length} reorder requests`);
+
+  // =================== SUMMARY ===================
+  console.log("\n" + "=".repeat(80));
+  console.log("✅ COMPREHENSIVE SEED COMPLETED!");
+  console.log("=".repeat(80));
+  
+  console.log("\n📊 DATABASE SUMMARY:");
+  console.log(`  • ${institutes.length} Institutes`);
+  console.log(`  • ${labs.length} Labs (2 per department × 9 departments × 5 institutes)`);
+  console.log(`  • ${policyMakers.length} Policy Makers`);
+  console.log(`  • ${labManagers.length} Lab Managers (2 per institute)`);
+  console.log(`  • ${trainers.length} Trainers (3-4 per lab)`);
+  console.log(`  • ${allEquipment.length} Equipment (6-9 per lab)`);
+  console.log(`  • ${faultyEquipment.length} Faulty Equipment`);
+  console.log(`  • ${alerts.length} Active Alerts`);
+  console.log(`  • ${breakdowns.length} Breakdown Reports`);
+  console.log(`  • ${reorderRequests.length} Reorder Requests`);
+  
+  console.log("\n🔐 LOGIN CREDENTIALS:");
+  console.log("  Universal Password: " + UNIVERSAL_PASSWORD);
+  
+  console.log("\n  📋 POLICY MAKERS:");
+  policyMakers.forEach(pm => console.log(`    • ${pm.email}`));
+  
+  console.log("\n  📋 LAB MANAGERS:");
+  labManagers.forEach(lm => console.log(`    • ${lm.email}`));
+  
+  console.log("\n  📋 SAMPLE TRAINERS (first 10):");
+  trainers.slice(0, 10).forEach(t => console.log(`    • ${t.email}`));
+  console.log(`    ... and ${trainers.length - 10} more trainers`);
+  
+  console.log("\n🔥 FIREBASE INTEGRATION:");
+  const firebaseLab = labs.find(l => 
+    l.department === "ADVANCED_MANUFACTURING_CNC" && 
+    l.instituteId === "ITI_JAIPUR" && 
+    l.labId.includes("LAB_1")
+  );
+  console.log(`  • Lab: ${firebaseLab?.name}`);
+  console.log(`  • Device IDs: ${FIREBASE_DEVICE_IDS.join(", ")}`);
+  console.log(`  • 9 equipment connected to Firebase for real-time tracking`);
+  
+  console.log("\n" + "=".repeat(80));
 }
 
 main()
   .catch((e) => {
+    console.error("\n❌ SEED FAILED:");
     console.error(e);
     process.exit(1);
   })

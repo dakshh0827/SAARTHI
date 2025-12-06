@@ -1,5 +1,7 @@
+// frontend/src/pages/dashboards/LabManagerDashboard.jsx - WITH REAL-TIME SOCKET INTEGRATION
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
+import io from "socket.io-client";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useAlertStore } from "../../stores/alertStore";
@@ -9,41 +11,28 @@ import EquipmentTable from "../../components/dashboard/EquipmentTable";
 import AlertsList from "../../components/dashboard/AlertsList";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EquipmentFormModal from "../../components/equipment/EquipmentFormModal";
+import MarkMaintenanceModal from "../../components/maintenance/MarkMaintenanceModal";
 import { useBreakdownStore } from "../../stores/breakdownStore";
 import BreakdownEquipmentTable from "../../components/breakdown/BreakdownEquipmentTable";
 import AddBreakdownModal from "../../components/breakdown/AddBreakdownModal";
 import BreakdownAlertModal from "../../components/breakdown/BreakdownAlertModal";
 import {
-  FaChartLine,
-  FaExclamationTriangle,
-  FaWrench,
-  FaArrowUp,
-  FaBuilding,
-  FaDownload,
-  FaSearch,
-  FaCheckCircle,
-  FaChevronDown,
-  FaClock,
-  FaUserCheck,
-  FaCheck,
-  FaTimes,
-  FaExternalLinkAlt
+  FaChartLine, FaExclamationTriangle, FaWrench, FaArrowUp, FaBuilding,
+  FaDownload, FaSearch, FaCheckCircle, FaChevronDown, FaClock,
+  FaUserCheck, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus,
+  FaWifi
 } from "react-icons/fa";
 import { ImLab } from "react-icons/im";
+import { MdOutlineWifiOff } from "react-icons/md";
 
-// --- CSS STYLE TO FORCE-FIX CHILD MODALS ---
+// Modal Wrapper CSS
 const modalStripperStyle = `
-  /* Target ALL fixed/absolute position elements inside modal-stripper */
   .modal-stripper * {
     position: static !important;
   }
-  
-  /* Allow only the direct content card to have relative positioning */
   .modal-stripper > *:last-child {
     position: relative !important;
   }
-  
-  /* Strip all background overlays and backdrops */
   .modal-stripper div[class*="fixed"],
   .modal-stripper div[class*="absolute"],
   .modal-stripper div[class*="inset"],
@@ -53,15 +42,12 @@ const modalStripperStyle = `
     background-color: transparent !important;
     backdrop-filter: none !important;
   }
-  
-  /* Ensure no pseudo-element overlays */
   .modal-stripper::before,
   .modal-stripper::after {
     display: none !important;
   }
 `;
 
-// --- UPDATED: Modal Wrapper ---
 const ModalWrapper = ({ children, onClose }) => {
   return (
     <div
@@ -69,7 +55,6 @@ const ModalWrapper = ({ children, onClose }) => {
       onClick={onClose}
     >
       <style>{modalStripperStyle}</style>
-
       <div
         className="modal-stripper relative w-auto max-w-4xl max-h-[90vh] overflow-y-auto p-4 flex flex-col items-center justify-center"
         onClick={(e) => e.stopPropagation()}
@@ -80,7 +65,6 @@ const ModalWrapper = ({ children, onClose }) => {
   );
 };
 
-// --- Compact History List ---
 const CompactHistoryList = ({ alerts, loading }) => {
   if (loading)
     return (
@@ -157,15 +141,10 @@ const CompactHistoryList = ({ alerts, loading }) => {
 
 export default function LabManagerDashboard() {
   const navigate = useNavigate();
-
-  const { triggerEquipmentModal, triggerBreakdownModal } =
-    useOutletContext() || {};
+  const { triggerEquipmentModal, triggerBreakdownModal } = useOutletContext() || {};
+  
   const { user, checkAuth } = useAuthStore();
-  const {
-    overview,
-    fetchOverview,
-    isLoading: dashboardLoading,
-  } = useDashboardStore();
+  const { overview, fetchOverview, isLoading: dashboardLoading } = useDashboardStore();
   const {
     equipment,
     fetchEquipment,
@@ -185,6 +164,11 @@ export default function LabManagerDashboard() {
     resolveBreakdown,
   } = useBreakdownStore();
 
+  // Socket state
+  const [socket, setSocket] = useState(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [liveEquipmentData, setLiveEquipmentData] = useState({});
+
   const [isAddBreakdownModalOpen, setIsAddBreakdownModalOpen] = useState(false);
   const [breakdownAlertToRespond, setBreakdownAlertToRespond] = useState(null);
   const [selectedLabId, setSelectedLabId] = useState("all");
@@ -201,11 +185,159 @@ export default function LabManagerDashboard() {
   const [historyAlerts, setHistoryAlerts] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  // --- REFS FOR TRIGGER TRACKING ---
+  // Mark Maintenance Modal State
+  const [isMarkMaintenanceModalOpen, setIsMarkMaintenanceModalOpen] = useState(false);
+  const [equipmentToMaintain, setEquipmentToMaintain] = useState(null);
+
   const prevEqTrigger = useRef(triggerEquipmentModal || 0);
   const prevBdTrigger = useRef(triggerBreakdownModal || 0);
 
-  // --- LISTENERS ---
+  // --- SOCKET.IO CONNECTION ---
+  useEffect(() => {
+    console.log('🔌 [LabManager] Setting up Socket.IO connection...');
+
+    let token = null;
+    try {
+      const authStorage = localStorage.getItem('auth-storage');
+      if (authStorage) {
+        const parsed = JSON.parse(authStorage);
+        token = parsed?.state?.accessToken;
+      }
+    } catch (e) {
+      console.error('❌ [LabManager] Failed to parse auth token:', e);
+    }
+
+    if (!token) {
+      console.error('❌ [LabManager] No access token found');
+      return;
+    }
+
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const socketUrl = apiUrl.replace('/api', '');
+    
+    const socketInstance = io(socketUrl, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socketInstance.on('connect', () => {
+      console.log('✅ [LabManager] Socket.IO connected!', socketInstance.id);
+      setIsSocketConnected(true);
+    });
+
+    socketInstance.on('disconnect', (reason) => {
+      console.log('❌ [LabManager] Socket.IO disconnected:', reason);
+      setIsSocketConnected(false);
+    });
+
+    socketInstance.on('connect_error', (error) => {
+      console.error('❌ [LabManager] Socket.IO connection error:', error.message);
+      setIsSocketConnected(false);
+    });
+
+    // Listen for equipment status updates
+    socketInstance.on('equipment:status', (data) => {
+      console.log('📡 [LabManager] Equipment status update:', data);
+      handleEquipmentUpdate(data);
+    });
+
+    socketInstance.on('equipment:status:update', (data) => {
+      console.log('📡 [LabManager] Equipment status update (alt):', data);
+      handleEquipmentUpdate(data.status || data);
+    });
+
+    // 🚨 NEW: Listen for new alerts
+    socketInstance.on('alert:new', (alert) => {
+      console.log('🚨 [LabManager] New alert received:', alert);
+      handleNewAlert(alert);
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      console.log('🔌 [LabManager] Cleaning up Socket.IO connection');
+      socketInstance.removeAllListeners();
+      socketInstance.disconnect();
+    };
+  }, []);
+
+  // --- HANDLE LIVE EQUIPMENT UPDATES ---
+  const handleEquipmentUpdate = (data) => {
+    const equipmentId = data.equipmentId || data.id;
+    
+    if (!equipmentId) {
+      console.warn('⚠️ [LabManager] No equipmentId in update data', data);
+      return;
+    }
+
+    console.log('🔄 [LabManager] Updating equipment:', equipmentId, 'Status:', data.status);
+
+    // Update live data state
+    setLiveEquipmentData((prev) => ({
+      ...prev,
+      [equipmentId]: {
+        ...data,
+        updatedAt: new Date(),
+      },
+    }));
+
+    // Refresh overview if equipment becomes faulty
+    if (data.status === 'FAULTY') {
+      console.log('⚠️ [LabManager] Equipment became FAULTY, refreshing overview');
+      fetchOverview();
+    }
+  };
+
+  // 🚨 NEW: Handle New Alert
+  const handleNewAlert = (alert) => {
+    console.log('🚨 [LabManager] Processing new alert:', alert);
+    
+    // Add to active alerts if on active tab
+    if (alertTab === 'active') {
+      setActiveAlerts((prev) => {
+        // Check if alert already exists
+        const exists = prev.some(a => a.id === alert.id);
+        if (exists) return prev;
+        
+        // Add new alert to the top
+        return [alert, ...prev];
+      });
+    }
+
+    // Refresh overview to update stats
+    fetchOverview();
+
+    // Show notification (optional)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('⚠️ Equipment Alert', {
+        body: `${alert.title}: ${alert.equipment?.name}`,
+        icon: '/favicon.ico',
+      });
+    }
+  };
+
+  // Merge live data with equipment list
+  const equipmentWithLiveData = equipment.map((eq) => {
+    const liveData = liveEquipmentData[eq.id];
+    if (!liveData) return eq;
+
+    return {
+      ...eq,
+      status: {
+        ...eq.status,
+        status: liveData.status || eq.status?.status,
+        temperature: liveData.temperature ?? eq.status?.temperature,
+        vibration: liveData.vibration ?? eq.status?.vibration,
+        energyConsumption: liveData.energyConsumption ?? eq.status?.energyConsumption,
+        healthScore: liveData.healthScore ?? eq.status?.healthScore,
+      },
+    };
+  });
+
+  // Listener for Sidebar "Add Equipment"
   useEffect(() => {
     if ((triggerEquipmentModal || 0) > prevEqTrigger.current) {
       setEditingEquipment(null);
@@ -214,6 +346,7 @@ export default function LabManagerDashboard() {
     }
   }, [triggerEquipmentModal]);
 
+  // Listener for Sidebar "Report Breakdown"
   useEffect(() => {
     if ((triggerBreakdownModal || 0) > prevBdTrigger.current) {
       setIsAddBreakdownModalOpen(true);
@@ -284,17 +417,17 @@ export default function LabManagerDashboard() {
   };
 
   const loadDashboardData = async () => {
-  try {
-    await Promise.all([
-      fetchOverview(),
-      fetchEquipment(),
-      fetchLabs({}, true), // ← ADD true HERE to force refresh
-      fetchActiveAlertsIsolated(),
-    ]);
-  } catch (error) {
-    console.error("❌ Failed to load dashboard data:", error);
-  }
-};
+    try {
+      await Promise.all([
+        fetchOverview(),
+        fetchEquipment(),
+        fetchLabs({}, true),
+        fetchActiveAlertsIsolated(),
+      ]);
+    } catch (error) {
+      console.error("❌ Failed to load dashboard data:", error);
+    }
+  };
 
   const handleTabChange = (tab) => {
     setAlertTab(tab);
@@ -376,8 +509,19 @@ export default function LabManagerDashboard() {
     }
   };
 
+  const handleMarkMaintenanceClick = (equipment) => {
+    setEquipmentToMaintain(equipment);
+    setIsMarkMaintenanceModalOpen(true);
+  };
+
+  const handleMarkMaintenanceSuccess = async () => {
+    setIsMarkMaintenanceModalOpen(false);
+    setEquipmentToMaintain(null);
+    await loadDashboardData();
+  };
+
   const getFilteredEquipment = () => {
-    let filtered = equipment;
+    let filtered = equipmentWithLiveData;
     if (selectedStatus !== "all")
       filtered = filtered.filter((eq) => eq.status?.status === selectedStatus);
     if (searchQuery) {
@@ -397,23 +541,12 @@ export default function LabManagerDashboard() {
     const filteredData = getFilteredEquipment();
     if (!filteredData.length) return;
     const headers = [
-      "Equipment ID",
-      "Name",
-      "Department",
-      "Lab",
-      "Status",
-      "Manufacturer",
-      "Model",
-      "Purchase Date",
+      "Equipment ID", "Name", "Department", "Lab", "Status",
+      "Manufacturer", "Model", "Purchase Date",
     ];
     const rows = filteredData.map((eq) => [
-      eq.equipmentId,
-      eq.name,
-      eq.department,
-      eq.lab?.name || "",
-      eq.status?.status || "",
-      eq.manufacturer,
-      eq.model,
+      eq.equipmentId, eq.name, eq.department, eq.lab?.name || "",
+      eq.status?.status || "", eq.manufacturer, eq.model,
       new Date(eq.purchaseDate).toLocaleDateString(),
     ]);
     const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
@@ -473,7 +606,7 @@ export default function LabManagerDashboard() {
 
   return (
     <div className="h-[calc(100vh-6rem)] flex flex-col bg-gray-200 overflow-hidden p-1 gap-4 w-full">
-      {/* --- ROW 1: 40% Height --- */}
+      {/* ROW 1: 40% Height */}
       <div className="flex-none h-[40%] grid grid-cols-12 gap-4 min-h-0">
         <div className="col-span-3 h-full grid grid-cols-2 gap-3">
           {stats.map((stat, index) => {
@@ -506,6 +639,18 @@ export default function LabManagerDashboard() {
                 <FaWrench className="w-4 h-4" />
               </div>
               <h2 className="text-sm font-bold text-gray-800">Breakdowns</h2>
+              {/* Connection Badge */}
+              {isSocketConnected ? (
+                <span className="flex items-center gap-1.5 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full border border-green-200">
+                  <FaWifi className="w-2.5 h-2.5" />
+                  Live
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-bold rounded-full border border-gray-200">
+                  <MdOutlineWifiOff className="w-2.5 h-2.5" />
+                  Offline
+                </span>
+              )}
             </div>
             <button
               onClick={() => setIsAddBreakdownModalOpen(true)}
@@ -515,10 +660,7 @@ export default function LabManagerDashboard() {
             </button>
           </div>
 
-          <div
-            className="flex-1 overflow-y-auto w-full relative [&::-webkit-scrollbar:horizontal]:hidden"
-            style={{ overflowX: "hidden" }}
-          >
+          <div className="flex-1 overflow-y-auto w-full relative [&::-webkit-scrollbar:horizontal]:hidden" style={{ overflowX: "hidden" }}>
             <div className="p-2 min-w-0 w-full">
               {breakdownEquipment.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
@@ -543,7 +685,7 @@ export default function LabManagerDashboard() {
         </div>
       </div>
 
-      {/* --- ROW 2: Remaining 60% Height --- */}
+      {/* ROW 2: Remaining 60% Height */}
       <div className="flex-1 min-h-0 grid grid-cols-12 gap-4">
         <div className="col-span-9 h-full bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden flex flex-col min-h-0">
           <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between gap-4">
@@ -584,13 +726,7 @@ export default function LabManagerDashboard() {
                       onClick={() => handleSelectLab(lab.labId)}
                       className="w-full text-left px-4 py-2.5 text-xs hover:bg-gray-50 flex items-center justify-between group transition-colors"
                     >
-                      <span
-                        className={
-                          selectedLabId === lab.labId
-                            ? "font-semibold text-blue-600"
-                            : "text-gray-700"
-                        }
-                      >
+                      <span className={selectedLabId === lab.labId ? "font-semibold text-blue-600" : "text-gray-700"}>
                         {lab.name}
                       </span>
                       {selectedLabId === lab.labId && (
@@ -603,13 +739,26 @@ export default function LabManagerDashboard() {
             </div>
 
             <div className="flex items-center gap-3 flex-1 justify-end">
-              <div className="relative max-w-[240px] w-full">
+              
+              {/* Log Maintenance Button - Added here as well for visibility */}
+              <button
+                 onClick={() => {
+                   setEquipmentToMaintain(null);
+                   setIsMarkMaintenanceModalOpen(true);
+                 }}
+                 className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 transition-colors"
+              >
+                <FaWrench className="w-3 h-3" />
+                Log Maintenance
+              </button>
+
+              <div className="relative max-w-[200px] w-full">
                 <FaSearch className="absolute left-3 top-2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search equipment..."
+                  placeholder="Search..."
                   className="w-full pl-9 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
                 />
               </div>
@@ -617,7 +766,7 @@ export default function LabManagerDashboard() {
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50 max-w-[140px]"
+                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50 max-w-[120px]"
               >
                 <option value="all">All Status</option>
                 <option value="OPERATIONAL">Operational</option>
@@ -635,12 +784,9 @@ export default function LabManagerDashboard() {
               </button>
             </div>
 
-            {/* --- REDIRECT ICON BUTTON --- */}
             {selectedLabId !== "all" && (
               <button
-                onClick={() =>
-                  navigate(`/dashboard/lab-analytics/${selectedLabId}`)
-                }
+                onClick={() => navigate(`/dashboard/lab-analytics/${selectedLabId}`)}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg border border-gray-200 hover:border-blue-100 transition-colors shadow-md"
                 title="Go to Lab Analytics"
               >
@@ -656,9 +802,7 @@ export default function LabManagerDashboard() {
               </div>
             ) : filteredEquipment.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-sm text-gray-500 font-medium">
-                  No equipment found
-                </p>
+                <p className="text-sm text-gray-500 font-medium">No equipment found</p>
                 {selectedLabId === "all" && (
                   <button
                     onClick={() => setIsModalOpen(true)}
@@ -673,6 +817,7 @@ export default function LabManagerDashboard() {
                 equipment={filteredEquipment}
                 onEdit={handleEditClick}
                 onDelete={handleDeleteEquipment}
+                onMarkMaintenance={handleMarkMaintenanceClick}
                 showActions={true}
               />
             )}
@@ -736,7 +881,7 @@ export default function LabManagerDashboard() {
         </div>
       </div>
 
-      {/* MODALS - FIXED: Added inline style wrapper for Equipment Modal */}
+      {/* MODALS */}
       {breakdownAlertToRespond && (
         <ModalWrapper onClose={() => setBreakdownAlertToRespond(null)}>
           <BreakdownAlertModal
@@ -768,7 +913,7 @@ export default function LabManagerDashboard() {
         </ModalWrapper>
       )}
 
-      {/* FIXED: Equipment Modal with inline style override */}
+      {/* Equipment Modal */}
       {isModalOpen && (
         <ModalWrapper onClose={handleModalClose}>
           <div
@@ -786,6 +931,28 @@ export default function LabManagerDashboard() {
                 editingEquipment ? handleUpdateEquipment : handleCreateEquipment
               }
               equipment={editingEquipment}
+            />
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* Mark Maintenance Modal */}
+      {isMarkMaintenanceModalOpen && (
+        <ModalWrapper onClose={() => setIsMarkMaintenanceModalOpen(false)}>
+          <div
+            style={{
+              position: "relative",
+              background: "transparent",
+              zIndex: "auto",
+              width: "100%",
+            }}
+          >
+            <MarkMaintenanceModal
+              isOpen={isMarkMaintenanceModalOpen}
+              onClose={() => setIsMarkMaintenanceModalOpen(false)}
+              equipment={equipmentToMaintain}
+              allEquipment={equipment} // Pass full list for dropdown
+              onSuccess={handleMarkMaintenanceSuccess}
             />
           </div>
         </ModalWrapper>

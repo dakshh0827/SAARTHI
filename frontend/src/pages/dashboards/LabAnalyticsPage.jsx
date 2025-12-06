@@ -1,213 +1,93 @@
-import { useEffect, useState } from "react";
+// frontend/src/pages/dashboards/LabAnalyticsPage.jsx
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useLabStore } from "../../stores/labStore";
-import LoadingSpinner from "../../components/common/LoadingSpinner";
-import api from "../../lib/axios";
+import io from "socket.io-client";
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  Area,
-  AreaChart,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  FaArrowLeft,
-  FaChartLine,
-  FaBox,
-  FaClock,
-  FaChartBar,
-  FaChartPie,
-  FaWrench,
-  FaCalendarAlt,
-  FaExclamationCircle,
-  FaCertificate,
-  FaBuilding
-} from "react-icons/fa";
-import { MdHealthAndSafety } from "react-icons/md";
-import { BsGraphUpArrow, BsGraphDownArrow  } from "react-icons/bs";
+  ArrowLeft, Box, Clock, BarChart3, PieChart as PieChartIcon, 
+  Wrench, Building, Award, AlertCircle, ShieldCheck, 
+  TrendingUp, TrendingDown, Activity, Wifi, WifiOff
+} from "lucide-react";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
+import api from "../../lib/axios";
 
-// --- Status Colors Map (Fixed Semantic Colors) ---
+// --- CONSTANTS ---
 const STATUS_COLORS = {
-  "OPERATIONAL": "#10B981", // Green
-  "IN USE": "#3B82F6",      // Blue
-  "MAINTENANCE": "#f5b20b", // Yellow
-  "FAULTY": "#EF4444",      // Red
-  "OFFLINE": "#9CA3AF"      // Gray
+  "OPERATIONAL": "#10B981",
+  "IN USE": "#3B82F6",
+  "IN CLASS": "#8B5CF6",
+  "MAINTENANCE": "#F59E0B",
+  "FAULTY": "#EF4444",
+  "IDLE": "#6B7280",
+  "OFFLINE": "#9CA3AF",
+  "WARNING": "#F97316"
 };
 
-// --- Distinct Fallback Colors ---
-// Changed to Purples/Teals/Pinks to avoid collision with semantic colors above
-const FALLBACK_COLORS = [
-  "#8B5CF6", // Purple
-  "#EC4899", // Pink
-  "#14B8A6", // Teal
-  "#6366F1", // Indigo
-  "#84CC16", // Lime
-  "#06B6D4"  // Cyan
-];
+const FALLBACK_COLORS = ["#8B5CF6", "#EC4899", "#14B8A6", "#6366F1", "#84CC16", "#06B6D4"];
 
+// --- HELPER FUNCTIONS ---
 const getISOStandard = (department) => {
   if (!department) return null;
   const dept = department.toLowerCase();
-
   if (dept.includes("manufactur")) return "ISO 9001";
   if (dept.includes("electric")) return "IEC/ISO standards";
   if (dept.includes("weld")) return "ISO 3834";
   if (dept.includes("material")) return "ISO 17025";
   if (dept.includes("auto")) return "ISO 16750, ISO 26262";
-  if (dept.includes("it") || dept.includes("comput")) return "ISO 27001";
-  
   return null;
 };
 
-const calculateNextMaintenance = (equipment) => {
-  const params = equipment.analyticsParams;
-  const status = equipment.status;
+// --- SUB-COMPONENTS ---
 
-  if (!params || !status) {
-    return {
-      daysUntilMaintenance: null,
-      confidence: 0,
-      priority: "UNKNOWN",
-      factors: [],
-    };
-  }
+const PredictiveMaintenanceCard = ({ equipment, prediction }) => {
+  if (!prediction) return null;
+  const probability = prediction.probability || 0;
+  const daysUntil = prediction.daysUntilMaintenance || 0;
+  const needsMaintenance = prediction.prediction === 1;
 
-  const healthScore = status.healthScore || 50;
-  const efficiency = params.efficiency || 50;
-  const uptime = params.totalUptime || 0;
-  const downtime = params.totalDowntime || 0;
-  const utilizationRate = params.utilizationRate || 50;
-  const wearScore = (downtime / (uptime + downtime + 1)) * 100;
+  let priority = "LOW";
+  let priorityColor = "green";
+  let priorityBg = "bg-green-50 border-green-200";
 
-  const tempScore = params.temperature
-    ? Math.max(0, 100 - Math.abs(params.temperature - 50) * 2)
-    : 50;
-
-  const vibrationScore = params.vibration
-    ? Math.max(0, 100 - params.vibration * 20)
-    : 50;
-
-  const combinedScore =
-    healthScore * 0.3 +
-    efficiency * 0.2 +
-    tempScore * 0.15 +
-    vibrationScore * 0.15 +
-    utilizationRate * 0.1 +
-    (100 - wearScore) * 0.1;
-
-  let daysUntilMaintenance;
-  let priority;
-
-  if (combinedScore >= 80) {
-    daysUntilMaintenance = Math.floor(90 + (combinedScore - 80) * 2);
-    priority = "LOW";
-  } else if (combinedScore >= 60) {
-    daysUntilMaintenance = Math.floor(30 + ((combinedScore - 60) / 20) * 60);
-    priority = "MEDIUM";
-  } else if (combinedScore >= 40) {
-    daysUntilMaintenance = Math.floor(7 + ((combinedScore - 40) / 20) * 23);
-    priority = "HIGH";
-  } else {
-    daysUntilMaintenance = Math.floor((combinedScore / 40) * 7);
+  if (needsMaintenance || probability > 70) {
     priority = "CRITICAL";
+    priorityColor = "red";
+    priorityBg = "bg-red-50 border-red-200";
+  } else if (probability > 50 || daysUntil < 15) {
+    priority = "HIGH";
+    priorityColor = "orange";
+    priorityBg = "bg-orange-50 border-orange-200";
+  } else if (probability > 30 || daysUntil < 30) {
+    priority = "MEDIUM";
+    priorityColor = "yellow";
+    priorityBg = "bg-yellow-50 border-yellow-200";
   }
-
-  const dataAvailability = [
-    healthScore !== 50,
-    efficiency !== 50,
-    params.temperature != null,
-    params.vibration != null,
-    uptime > 0,
-  ].filter(Boolean).length;
-
-  const confidence = (dataAvailability / 5) * 100;
-
-  const factors = [];
-  if (healthScore < 70) factors.push("Low health score");
-  if (efficiency < 60) factors.push("Poor efficiency");
-  if (wearScore > 30) factors.push("High wear rate");
-  if (
-    params.temperature &&
-    (params.temperature > 70 || params.temperature < 30)
-  ) {
-    factors.push("Abnormal temperature");
-  }
-  if (params.vibration && params.vibration > 3) factors.push("High vibration");
-
-  return {
-    daysUntilMaintenance,
-    confidence: Math.round(confidence),
-    priority,
-    factors,
-    combinedScore: Math.round(combinedScore),
-  };
-};
-
-const PredictiveMaintenanceCard = ({ equipment }) => {
-  const prediction = calculateNextMaintenance(equipment);
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "CRITICAL": return "red";
-      case "HIGH": return "orange";
-      case "MEDIUM": return "yellow";
-      case "LOW": return "green";
-      default: return "gray";
-    }
-  };
-
-  const getPriorityBg = (priority) => {
-    switch (priority) {
-      case "CRITICAL": return "bg-red-50 border-red-200";
-      case "HIGH": return "bg-orange-50 border-orange-200";
-      case "MEDIUM": return "bg-yellow-50 border-yellow-200";
-      case "LOW": return "bg-green-50 border-green-200";
-      default: return "bg-gray-50 border-gray-200";
-    }
-  };
 
   return (
-    <div className={`p-4 rounded-xl border ${getPriorityBg(prediction.priority)} shadow-sm`}>
+    <div className={`p-4 rounded-xl border ${priorityBg} shadow-sm`}>
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
-          <h4 className="font-semibold text-gray-900">{equipment.name}</h4>
+          <h4 className="font-semibold text-gray-900 text-sm truncate pr-2">{equipment?.name || "Unknown Equipment"}</h4>
           <div className="flex items-center gap-2 mt-1">
-             <span className={`text-xs font-bold text-${getPriorityColor(prediction.priority)}-700`}>
-                {prediction.daysUntilMaintenance ?? "?"} days remaining
-             </span>
+            <span className={`text-xs font-bold text-${priorityColor}-700`}>
+              Failure Prob: {probability.toFixed(1)}%
+            </span>
           </div>
         </div>
-        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase bg-white border border-${getPriorityColor(prediction.priority)}-200 text-${getPriorityColor(prediction.priority)}-700`}>
-          {prediction.priority}
+        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase bg-white border border-${priorityColor}-200 text-${priorityColor}-700`}>
+          {priority}
         </span>
       </div>
-
-      {prediction.factors.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-black/5 flex items-start gap-1.5">
-          <FaExclamationCircle className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-gray-600">{prediction.factors.join(", ")}</p>
+      <div className="mt-2 pt-2 border-t border-black/5">
+        <div className="flex items-start gap-1.5 mb-1">
+          <AlertCircle className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-gray-600">
+            {needsMaintenance ? `Maintenance needed in ${daysUntil} days` : `Next maintenance in ~${daysUntil} days`}
+          </p>
         </div>
-      )}
-
-      <div className="mt-2 flex justify-between items-center text-xs text-gray-500">
-         <span>Confidence: {prediction.confidence}%</span>
-         <span className="font-medium text-gray-700">Health: {prediction.combinedScore}%</span>
       </div>
     </div>
   );
@@ -216,429 +96,520 @@ const PredictiveMaintenanceCard = ({ equipment }) => {
 export default function LabAnalyticsPage() {
   const { labId } = useParams();
   const navigate = useNavigate();
-  const { labSummary, fetchLabSummary, isLoading: labLoading } = useLabStore();
-  const [labAnalytics, setLabAnalytics] = useState(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+  // --- STATE ---
+  const [labData, setLabData] = useState(null);
+  const [predictiveData, setPredictiveData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Socket State
+  const [socket, setSocket] = useState(null);
+  const [liveUpdates, setLiveUpdates] = useState({});
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+
+  // --- SOCKET.IO CONNECTION (ROBUST VERSION) ---
+  useEffect(() => {
+    console.log('🔌 Setting up Socket.IO connection...');
+
+    // 1. Robust Token Retrieval
+    let token = null;
+    try {
+      const authStorage = localStorage.getItem('auth-storage');
+      if (authStorage) {
+        const parsed = JSON.parse(authStorage);
+        token = parsed?.state?.accessToken;
+      }
+    } catch (e) {
+      console.error('❌ Failed to parse auth token:', e);
+    }
+
+    if (!token) {
+      console.error('❌ No access token found in localStorage');
+      return;
+    }
+
+    // 2. URL Config
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const socketUrl = apiUrl.replace('/api', '');
+    
+    // 3. Initialize Socket
+    const socketInstance = io(socketUrl, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    // 4. Connection Handlers
+    socketInstance.on('connect', () => {
+      console.log('✅ Socket.IO connected!', socketInstance.id);
+      setIsSocketConnected(true);
+    });
+
+    socketInstance.on('disconnect', (reason) => {
+      console.log('❌ Socket.IO disconnected:', reason);
+      setIsSocketConnected(false);
+    });
+
+    socketInstance.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error.message);
+      setIsSocketConnected(false);
+    });
+
+    // 5. Data Event Listeners (Handling both event types)
+    socketInstance.on('equipment:status', (data) => {
+      console.log('📡 [equipment:status] Received update:', data);
+      handleEquipmentUpdate(data);
+    });
+
+    socketInstance.on('equipment:status:update', (data) => {
+      console.log('📡 [equipment:status:update] Received update:', data);
+      // This event might send { equipmentId, status: { ... } } or flattened
+      handleEquipmentUpdate(data.status || data);
+    });
+
+    // Debug listener
+    socketInstance.onAny((eventName, ...args) => {
+      if (!eventName.includes('equipment')) {
+        console.log('📡 Socket event:', eventName);
+      }
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      console.log('🔌 Cleaning up Socket.IO connection');
+      socketInstance.removeAllListeners();
+      socketInstance.disconnect();
+    };
+  }, []);
+
+  // --- HANDLE LIVE UPDATES ---
+  const handleEquipmentUpdate = (data) => {
+    const equipmentId = data.equipmentId || data.id; // Handle varied payload structures
+    
+    if (!equipmentId) {
+      console.warn('⚠️ No equipmentId in update data', data);
+      return;
+    }
+
+    // 1. Update Live Indicator State
+    setLiveUpdates((prev) => ({
+      ...prev,
+      [equipmentId]: {
+        temperature: data.temperature,
+        vibration: data.vibration,
+        energyConsumption: data.energyConsumption,
+        updatedAt: new Date(),
+      },
+    }));
+
+    // 2. Update Lab Data & Recalculate Stats
+    setLabData((prevLabData) => {
+      if (!prevLabData || !prevLabData.equipment) return prevLabData;
+
+      let updatedEquipmentList = prevLabData.equipment.map((eq) => {
+        if (eq.id === equipmentId) {
+          // Merge new data into existing equipment object
+          return {
+            ...eq,
+            status: {
+              ...eq.status,
+              status: data.status || eq.status?.status,
+              healthScore: data.healthScore !== undefined ? data.healthScore : eq.status?.healthScore,
+              // Update status sensor values if present
+              temperature: data.temperature ?? eq.status?.temperature,
+              vibration: data.vibration ?? eq.status?.vibration,
+              energyConsumption: data.energyConsumption ?? eq.status?.energyConsumption,
+            },
+            analyticsParams: {
+              ...eq.analyticsParams,
+              // Update analytics sensor values
+              temperature: data.temperature ?? eq.analyticsParams?.temperature,
+              vibration: data.vibration ?? eq.analyticsParams?.vibration,
+              energyConsumption: data.energyConsumption ?? eq.analyticsParams?.energyConsumption,
+              efficiency: data.efficiency ?? eq.analyticsParams?.efficiency,
+            }
+          };
+        }
+        return eq;
+      });
+
+      // Recalculate Global Stats (e.g. Avg Health) for the top cards
+      const totalEquipment = updatedEquipmentList.length;
+      const avgHealthScore = updatedEquipmentList.reduce((sum, eq) => sum + (eq.status?.healthScore || 0), 0) / (totalEquipment || 1);
+
+      return {
+        ...prevLabData,
+        equipment: updatedEquipmentList,
+        statistics: {
+          ...prevLabData.statistics,
+          avgHealthScore: avgHealthScore
+        }
+      };
+    });
+  };
+
+  // --- INITIAL DATA FETCH ---
   useEffect(() => {
     const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
       try {
-        setAnalyticsLoading(true);
-        await fetchLabSummary(labId);
-        const response = await api.get(`/monitoring/lab-analytics/${labId}`);
-        setLabAnalytics(response.data.data);
-      } catch (error) {
-        console.error("Failed to fetch lab analytics:", error);
+        console.log(`📊 Fetching lab analytics for: ${labId}`);
+        const analyticsResponse = await api.get(`/monitoring/lab-analytics/${labId}`);
+        setLabData(analyticsResponse.data.data);
+
+        // Fetch predictive data separately if needed
+        try {
+          const predictiveResponse = await api.get(`/analytics/predictive/${labId}`);
+          setPredictiveData(predictiveResponse.data.data || []);
+        } catch (predErr) {
+          console.warn("Predictive data fetch failed (non-critical):", predErr);
+        }
+
+      } catch (err) {
+        console.error("❌ Failed to fetch lab analytics:", err);
+        setError(err.response?.data?.message || "Failed to load lab analytics");
       } finally {
-        setAnalyticsLoading(false);
+        setIsLoading(false);
       }
     };
 
-    fetchData();
+    if (labId) {
+      fetchData();
+    }
   }, [labId]);
 
-  const prepareAnalyticsData = () => {
-    if (!labAnalytics || !labAnalytics.equipment) return null;
+  // --- LIVE INDICATOR COMPONENT ---
+  const LiveIndicator = ({ equipmentId }) => {
+    const update = liveUpdates[equipmentId];
+    if (!update) return null;
 
-    const equipment = labAnalytics.equipment;
+    const secondsAgo = Math.floor((new Date() - update.updatedAt) / 1000);
+    const isLive = secondsAgo < 10;
 
+    return (
+      <div className="flex items-center gap-2 ml-2">
+        <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+        <span className={`text-[10px] font-bold ${isLive ? 'text-green-600' : 'text-gray-500'}`}>
+          {isLive ? 'LIVE' : `${secondsAgo}s ago`}
+        </span>
+      </div>
+    );
+  };
+
+  // --- CHART DATA PREPARATION ---
+  const chartData = useMemo(() => {
+    if (!labData || !labData.equipment) return null;
+
+    const equipment = labData.equipment;
+
+    // Status Distribution
     const statusData = equipment.reduce((acc, eq) => {
       let status = eq.status?.status || "OFFLINE";
-      // Normalize status: uppercase and replace underscores with spaces
-      // This merges "IN_USE" and "IN USE" into a single slice, preventing duplicates
       status = status.toUpperCase().replace(/_/g, " ");
-      
       acc[status] = (acc[status] || 0) + 1;
       return acc;
     }, {});
 
-    // Create the initial array
-    let statusChartData = Object.entries(statusData).map(
-      ([status, count]) => ({
-        name: status,
-        rawStatus: status, // normalized status
-        value: count,
-      })
-    );
+    const statusChartData = Object.entries(statusData).map(([status, count]) => ({
+      name: status,
+      rawStatus: status,
+      value: count,
+    }));
 
-    // --- CUSTOM SORT ORDER ---
-    const sortOrder = {
-      "FAULTY": 1,
-      "MAINTENANCE": 2,
-      "OFFLINE": 3,
-      "IN USE": 4,
-      "OPERATIONAL": 5
-    };
-
-    statusChartData.sort((a, b) => {
-      const orderA = sortOrder[a.rawStatus] || 99;
-      const orderB = sortOrder[b.rawStatus] || 99;
-      return orderA - orderB;
-    });
-
+    // Health Score
     const healthScoreData = equipment.map((eq) => ({
-      name: eq.name.substring(0, 15) + (eq.name.length > 15 ? "..." : ""),
+      name: eq.name,
+      shortName: eq.name.substring(0, 15) + (eq.name.length > 15 ? "..." : ""),
       healthScore: eq.status?.healthScore || 0,
       efficiency: eq.analyticsParams?.efficiency || 0,
     }));
 
-    const radarMetrics = [];
-    const sampleEquipment = equipment.find((eq) => eq.analyticsParams);
+    // Analytics Params
+    const tempData = equipment.filter(eq => eq.analyticsParams?.temperature !== undefined).map(eq => ({
+        name: eq.name,
+        shortName: eq.name.substring(0, 10),
+        temperature: eq.analyticsParams.temperature
+    }));
 
-    if (sampleEquipment?.analyticsParams) {
-      const params = sampleEquipment.analyticsParams;
-      if (params.temperature !== null)
-        radarMetrics.push({ metric: "Temp", value: Math.min((params.temperature / 100) * 100, 100) });
-      if (params.efficiency !== null)
-        radarMetrics.push({ metric: "Eff.", value: params.efficiency });
-      if (params.utilizationRate !== null)
-        radarMetrics.push({ metric: "Util.", value: params.utilizationRate });
-      if (params.vibration !== null)
-        radarMetrics.push({ metric: "Vib.", value: Math.max(0, 100 - params.vibration * 10) });
-      if (params.voltage !== null)
-        radarMetrics.push({ metric: "Volt", value: Math.min((params.voltage / 240) * 100, 100) });
-      if (params.powerFactor !== null)
-        radarMetrics.push({ metric: "P.F.", value: params.powerFactor * 100 });
-    }
+    const vibrationData = equipment.filter(eq => eq.analyticsParams?.vibration !== undefined).map(eq => ({
+        name: eq.name,
+        shortName: eq.name.substring(0, 10),
+        vibration: eq.analyticsParams.vibration
+    }));
 
-    const uptimeDowntimeData = equipment
-      .filter((eq) => eq.analyticsParams)
-      .slice(0, 10)
-      .map((eq) => ({
-        name: eq.name.substring(0, 10),
-        uptime: eq.analyticsParams.totalUptime || 0,
-        downtime: eq.analyticsParams.totalDowntime || 0,
-      }));
+    const energyData = equipment.filter(eq => eq.analyticsParams?.energyConsumption !== undefined).map(eq => ({
+        name: eq.name,
+        shortName: eq.name.substring(0, 10),
+        energy: eq.analyticsParams.energyConsumption
+    }));
 
-    return {
-      statusChartData,
-      healthScoreData,
-      radarMetrics,
-      uptimeDowntimeData,
-    };
-  };
+    return { statusChartData, healthScoreData, tempData, vibrationData, energyData };
+  }, [labData]); 
 
-  const analyticsData = labAnalytics ? prepareAnalyticsData() : null;
-  const isoStandard = getISOStandard(labAnalytics?.lab?.department);
-
-  if (labLoading || analyticsLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <LoadingSpinner size="lg" />
+  // --- RENDER ---
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><LoadingSpinner size="lg" /></div>;
+  
+  if (error) return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-200">
+      <div className="text-center">
+        <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Analytics</h2>
+        <p className="text-gray-600 mb-4">{error}</p>
+        <button onClick={() => navigate("/dashboard")} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Return to Dashboard</button>
       </div>
-    );
-  }
+    </div>
+  );
+
+  if (!labData) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><p className="text-gray-600">No data available.</p></div>;
+
+  const isoStandard = getISOStandard(labData.lab?.department);
+  const stats = labData.statistics || {};
+  const getChartWidth = (count) => Math.max(100, count * 60);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      
+    <div className="min-h-screen bg-gray-200 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-5 sticky top-0 z-10 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-900"
-            >
-              <FaArrowLeft className="w-5 h-5" />
+            <button onClick={() => navigate("/dashboard")} className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-900">
+              <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                {labSummary?.lab?.name || "Loading..."}
-                {isoStandard && (
-                   <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold tracking-wide">
-                     <FaCertificate /> {isoStandard}
-                   </span>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">{labData.lab?.name || "Lab Analytics"}</h1>
+                {/* Connection Badge */}
+                {isSocketConnected ? (
+                   <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1.5 border border-green-200">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Real-time Active
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-full flex items-center gap-1.5 border border-gray-200">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                    Connecting...
+                  </span>
                 )}
-              </h1>
+              </div>
               <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                <FaBuilding className="w-3 h-3" />
-                <span>{labAnalytics?.lab?.institute?.name}</span>
-                <span className="text-gray-300">•</span>
-                <span>{labAnalytics?.lab?.department}</span>
+                <Building className="w-3 h-3" />
+                <span>{labData.lab?.institute?.name}</span>
                 {isoStandard && (
-                   <span className="md:hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold">
-                     {isoStandard}
-                   </span>
+                  <>
+                    <span className="text-gray-300">•</span>
+                    <span className="flex items-center gap-1 text-blue-600 font-medium"><Award className="w-3 h-3" /> {isoStandard}</span>
+                  </>
                 )}
               </div>
             </div>
           </div>
-          
-          
-
-[Image of ISO certified laboratory]
-
         </div>
       </div>
 
       <div className="flex-1 w-full p-6 space-y-6">
-        
-        {/* Simple Stats */}
-        {labSummary && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-full mb-3">
-                <FaBox className="w-5 h-5" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">
-                {labSummary.statistics?.totalEquipment || 0}
-              </span>
-              <span className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Total Equipment</span>
-            </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatCard icon={Box} title="Total Equipment" value={stats.totalEquipment || 0} />
+          <StatCard icon={ShieldCheck} title="Avg Health" value={`${(stats.avgHealthScore || 0).toFixed(0)}%`} color="text-green-600" />
+          <StatCard icon={TrendingUp} title="Total Uptime" value={`${(stats.totalUptime || 0).toFixed(0)}h`} />
+          <StatCard icon={TrendingDown} title="Downtime" value={`${(stats.totalDowntime || 0).toFixed(0)}h`} />
+          <StatCard icon={Clock} title="Active Now" value={stats.inClassEquipment || 0} color="text-purple-600" />
+        </div>
 
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <div className="p-3 bg-green-50 text-green-600 rounded-full mb-3">
-                <MdHealthAndSafety  className="w-5 h-5" />
-              </div>
-              <span className="text-2xl font-bold text-green-600">
-                {labSummary.statistics?.avgHealthScore?.toFixed(0) || 0}%
-              </span>
-              <span className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Avg Health</span>
+        {/* Predictive Maintenance - Scrollable */}
+        {predictiveData && predictiveData.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg text-purple-600"><Wrench className="w-5 h-5" /></div>
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900">AI Predictive Forecast</h3>
+                      <p className="text-sm text-gray-500">Real-time failure probability.</p>
+                  </div>
+                </div>
             </div>
-
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-full mb-3">
-                <BsGraphUpArrow  className="w-5 h-5" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">
-                {labSummary.statistics?.totalUptime?.toFixed(0) || 0}<span className="text-sm text-gray-400 font-normal ml-0.5">h</span>
-              </span>
-              <span className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Total Uptime</span>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-              <div className="p-3 bg-red-50 text-red-600 rounded-full mb-3">
-                <BsGraphDownArrow  className="w-5 h-5" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">
-                {labSummary.statistics?.totalDowntime?.toFixed(0) || 0}<span className="text-sm text-gray-400 font-normal ml-0.5">h</span>
-              </span>
-              <span className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Downtime</span>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center col-span-2 md:col-span-1">
-              <div className="p-3 bg-purple-50 text-purple-600 rounded-full mb-3">
-                <FaClock className="w-5 h-5" />
-              </div>
-              <span className="text-2xl font-bold text-gray-900">
-                {labSummary.statistics?.inClassEquipment || 0}
-              </span>
-              <span className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">Active Now</span>
+            <div className="max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {predictiveData.map((item) => (
+                    <PredictiveMaintenanceCard
+                        key={item.id}
+                        equipment={labData.equipment?.find(eq => eq.id === item.id)}
+                        prediction={item.prediction}
+                    />
+                ))}
+                </div>
             </div>
           </div>
         )}
 
-        {analyticsData && labAnalytics && (
-          <>
+        {/* Charts Section */}
+        {chartData && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Pie Chart */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
-                   <FaWrench className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Predictive Maintenance Forecast</h3>
-                  <p className="text-sm text-gray-500">AI-driven maintenance scheduling based on live telemetry.</p>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {labAnalytics.equipment
-                  .filter((eq) => eq.analyticsParams)
-                  .sort((a, b) => {
-                    const aPred = calculateNextMaintenance(a);
-                    const bPred = calculateNextMaintenance(b);
-                    const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, UNKNOWN: 4 };
-                    return priorityOrder[aPred.priority] - priorityOrder[bPred.priority];
-                  })
-                  .slice(0, 6)
-                  .map((eq) => (
-                    <PredictiveMaintenanceCard key={eq.id} equipment={eq} />
-                  ))}
+              <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <PieChartIcon className="text-blue-500 w-5 h-5"/> Status
+              </h3>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chartData.statusChartData} cx="50%" cy="45%" startAngle={90} endAngle={-270}
+                      outerRadius={80} labelLine={false} dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {chartData.statusChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.rawStatus] || FALLBACK_COLORS[index]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* PIE CHART with reordered data */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <FaChartPie className="text-blue-500"/> Equipment Status
-                </h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={analyticsData.statusChartData}
-                        cx="50%"
-                        cy="45%" 
-                        startAngle={90}
-                        endAngle={-270}
-                        outerRadius={80}
-                        labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        dataKey="value"
-                      >
-                        {analyticsData.statusChartData.map((entry, index) => (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            // Use normalized rawStatus for color lookup
-                            fill={
-                                STATUS_COLORS[entry.rawStatus] || 
-                                FALLBACK_COLORS[index % FALLBACK_COLORS.length]
-                            } 
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Bar Chart */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-2">
-                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <FaChartBar className="text-green-500"/> Health Score & Efficiency
-                </h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analyticsData.healthScoreData.slice(0, 8)}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                      <XAxis
-                        dataKey="name"
-                        angle={-20}
-                        textAnchor="end"
-                        height={60}
-                        tick={{ fontSize: 11, fill: '#6B7280' }}
-                      />
-                      <YAxis tick={{ fontSize: 11, fill: '#6B7280' }} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Legend verticalAlign="top" height={36} wrapperStyle={{ top: -10 }} />
-                      <Bar dataKey="healthScore" fill="#10B981" name="Health Score" />
-                      <Bar dataKey="efficiency" fill="#3B82F6" name="Efficiency %" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Area Chart */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-2">
-                <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <FaChartLine className="text-emerald-500"/> Uptime vs Downtime Analysis
-                </h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={analyticsData.uptimeDowntimeData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                      <XAxis
-                        dataKey="name"
-                        angle={-20}
-                        textAnchor="end"
-                        height={60}
-                        tick={{ fontSize: 11, fill: '#6B7280' }}
-                      />
-                      <YAxis label={{ value: "Hours", angle: -90, position: "insideLeft", style: { fontSize: 10 } }} tick={{ fontSize: 11, fill: '#6B7280' }} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Legend verticalAlign="top" height={36} wrapperStyle={{ top: -10 }} />
-                      <Area type="monotone" dataKey="uptime" stackId="1" stroke="#10B981" fill="#10B981" name="Uptime (hrs)" />
-                      <Area type="monotone" dataKey="downtime" stackId="1" stroke="#EF4444" fill="#EF4444" name="Downtime (hrs)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Radar Chart */}
-              {analyticsData.radarMetrics.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                      <FaChartLine className="text-purple-500"/> Performance Radar
-                  </h3>
-                  <div className="h-[300px]">
+            {/* Health Chart - Horizontal Scroll */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-2 flex flex-col">
+              <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <BarChart3 className="text-green-500 w-5 h-5"/> Health & Efficiency
+              </h3>
+              <div className="h-[300px] overflow-x-auto overflow-y-hidden custom-scrollbar">
+                <div style={{ width: `${getChartWidth(chartData.healthScoreData.length)}%`, minWidth: '100%', height: '100%' }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={analyticsData.radarMetrics}>
-                        <PolarGrid stroke="#e5e7eb" />
-                        <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: '#4B5563' }} />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
-                        <Radar name="Performance" dataKey="value" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.6} />
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Legend verticalAlign="bottom" height={36} />
-                      </RadarChart>
+                    <BarChart data={chartData.healthScoreData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                        <XAxis dataKey="shortName" angle={-20} textAnchor="end" height={60} tick={{ fontSize: 11 }} interval={0} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip />
+                        <Bar dataKey="healthScore" fill="#10B981" name="Health Score" />
+                        <Bar dataKey="efficiency" fill="#3B82F6" name="Efficiency %" />
+                    </BarChart>
                     </ResponsiveContainer>
-                  </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sensor Charts */}
+        {chartData && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <ChartCard title="Temperature (°C)" data={chartData.tempData} dataKey="temperature" color="#F59E0B" />
+            <ChartCard title="Vibration (mm/s)" data={chartData.vibrationData} dataKey="vibration" color="#8B5CF6" />
+            <ChartCard title="Energy (W)" data={chartData.energyData} dataKey="energy" color="#10B981" />
+          </div>
+        )}
+
+        {/* Live Equipment Table */}
+        {labData.equipment && labData.equipment.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900">Equipment Detail View</h3>
+              {Object.keys(liveUpdates).length > 0 && (
+                <span className="text-xs text-green-600 flex items-center gap-1 font-bold animate-pulse">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  {Object.keys(liveUpdates).length} devices transmitting
+                </span>
               )}
             </div>
-
-            {/* Equipment Details Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <h3 className="font-bold text-gray-900">Equipment Detail View</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Equipment</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Health</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Efficiency</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Temp</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Uptime</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Maint. Due</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {labAnalytics.equipment.map((eq) => {
-                      const prediction = calculateNextMaintenance(eq);
-                      return (
-                        <tr key={eq.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{eq.name}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2.5 py-1 inline-flex text-xs leading-4 font-semibold rounded-full ${
-                                eq.status?.status === "OPERATIONAL" ? "bg-green-100 text-green-800" :
-                                eq.status?.status === "IN_USE" ? "bg-blue-100 text-blue-800" :
-                                eq.status?.status === "MAINTENANCE" ? "bg-yellow-100 text-yellow-800" :
-                                eq.status?.status === "FAULTY" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"
-                              }`}>
-                              {eq.status?.status || "OFFLINE"}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex items-center gap-2">
-                              <span>{eq.status?.healthScore?.toFixed(0) || 0}%</span>
-                              <div className="w-16 bg-gray-100 rounded-full h-1.5">
-                                <div className={`h-full rounded-full ${
-                                    (eq.status?.healthScore || 0) >= 80 ? "bg-green-500" :
-                                    (eq.status?.healthScore || 0) >= 50 ? "bg-yellow-500" : "bg-red-500"
-                                  }`} style={{ width: `${eq.status?.healthScore || 0}%` }} />
-                              </div>
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Equipment</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Health</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Temp</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Vib</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Energy</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {labData.equipment.map((eq) => {
+                    const hasLiveData = liveUpdates[eq.id];
+                    return (
+                      <tr key={eq.id} className={`hover:bg-gray-50 transition-colors ${hasLiveData ? 'bg-green-50/40' : ''}`}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                                <span className="text-sm font-medium text-gray-900">{eq.name}</span>
+                                <LiveIndicator equipmentId={eq.id} />
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{eq.analyticsParams?.efficiency?.toFixed(1) || "N/A"}%</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{eq.analyticsParams?.temperature?.toFixed(1) || "N/A"}°C</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{eq.analyticsParams?.totalUptime?.toFixed(1) || "N/A"}h</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {prediction.daysUntilMaintenance != null ? (
-                              <div className="flex flex-col">
-                                <span className={`text-xs font-bold ${prediction.daysUntilMaintenance < 7 ? 'text-red-600' : 'text-gray-700'}`}>
-                                  {prediction.daysUntilMaintenance} Days
-                                </span>
-                                <span className="text-[10px] text-gray-400 uppercase">{prediction.priority} priority</span>
-                              </div>
-                            ) : (<span className="text-xs text-gray-400">No data</span>)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="px-2.5 py-1 inline-flex text-xs leading-4 font-semibold rounded-full bg-gray-100 text-gray-800">
+                            {eq.status?.status || "OFFLINE"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {(eq.status?.healthScore || 0).toFixed(0)}%
+                        </td>
+                        {/* Live Data Cells */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <span className={hasLiveData ? 'font-bold text-green-700' : ''}>
+                                {eq.analyticsParams?.temperature?.toFixed(1) || "N/A"}
+                            </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <span className={hasLiveData ? 'font-bold text-green-700' : ''}>
+                                {eq.analyticsParams?.vibration?.toFixed(2) || "N/A"}
+                            </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <span className={hasLiveData ? 'font-bold text-green-700' : ''}>
+                                {eq.analyticsParams?.energyConsumption?.toFixed(0) || "N/A"}
+                            </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
   );
 }
+
+// Helper Components
+const StatCard = ({ icon: Icon, title, value, color = "text-blue-600" }) => (
+  <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
+    <div className={`p-3 bg-blue-50 ${color} rounded-full mb-3`}>
+      <Icon className="w-5 h-5" />
+    </div>
+    <span className="text-2xl font-bold text-gray-900">{value}</span>
+    <span className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">{title}</span>
+  </div>
+);
+
+const ChartCard = ({ title, data, dataKey, color }) => {
+    const dynamicWidth = Math.max(100, (data?.length || 0) * 12); 
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+        <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5" style={{ color }} /> {title}
+        </h3>
+        <div className="h-[250px] overflow-x-auto overflow-y-hidden custom-scrollbar">
+          <div style={{ width: `${dynamicWidth}%`, minWidth: '100%', height: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="shortName" angle={-20} textAnchor="end" height={60} tick={{ fontSize: 10 }} interval={0} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey={dataKey} fill={color} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    );
+};

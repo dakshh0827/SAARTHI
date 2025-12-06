@@ -1,3 +1,4 @@
+// backend/controllers/maintenance.controller.js - UPDATED
 import prisma from '../config/database.js';
 import logger from '../utils/logger.js';
 import { filterDataByRole } from '../middlewares/rbac.js';
@@ -96,6 +97,110 @@ class MaintenanceController {
       }
       throw error;
     }
+  });
+
+  // NEW: Mark equipment maintenance (Lab Manager only)
+  markMaintenance = asyncHandler(async (req, res) => {
+    const { equipmentId } = req.params;
+    const { maintenanceType, notes } = req.body;
+
+    // Verify equipment exists and user has access
+    const roleFilter = filterDataByRole(req);
+    const equipment = await prisma.equipment.findFirst({
+      where: { id: equipmentId, ...roleFilter, isActive: true },
+    });
+
+    if (!equipment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Equipment not found or access denied.',
+      });
+    }
+
+    // Create maintenance record
+    const maintenanceRecord = await prisma.maintenanceRecord.create({
+      data: {
+        equipmentId,
+        markedBy: req.user.id,
+        maintenanceType: maintenanceType || 'General Maintenance',
+        notes,
+      },
+      include: {
+        markedByUser: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    // Update equipment status lastMaintenanceDate
+    await prisma.equipmentStatus.update({
+      where: { equipmentId },
+      data: {
+        lastMaintenanceDate: maintenanceRecord.maintenanceDate,
+      },
+    });
+
+    logger.info(`Maintenance marked for equipment ${equipmentId} by ${req.user.email}`);
+    
+    res.json({
+      success: true,
+      message: 'Maintenance marked successfully.',
+      data: maintenanceRecord,
+    });
+  });
+
+  // NEW: Get maintenance records for equipment
+  getMaintenanceRecords = asyncHandler(async (req, res) => {
+    const { equipmentId } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const roleFilter = filterDataByRole(req);
+    const equipment = await prisma.equipment.findFirst({
+      where: { id: equipmentId, ...roleFilter, isActive: true },
+    });
+
+    if (!equipment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Equipment not found or access denied.',
+      });
+    }
+
+    const [records, total] = await Promise.all([
+      prisma.maintenanceRecord.findMany({
+        where: { equipmentId },
+        include: {
+          markedByUser: {
+            select: {
+              firstName: true,
+              lastName: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+        skip: parseInt(skip),
+        take: parseInt(limit),
+        orderBy: { maintenanceDate: 'desc' },
+      }),
+      prisma.maintenanceRecord.count({ where: { equipmentId } }),
+    ]);
+
+    res.json({
+      success: true,
+      data: records,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   });
 }
 
