@@ -19,7 +19,7 @@ import { useAuthStore } from "../../stores/authStore";
 
 // Import Modals
 import InstituteManagerForm from "../../components/admin/InstituteManagerForm";
-import LabManagerForm from "../../components/admin/labManagerForm";
+import LabManagerForm from "../../components/admin/LabManagerForm";
 
 export default function DashboardLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -39,6 +39,90 @@ export default function DashboardLayout() {
 
   // Ref for the quick menu container
   const quickMenuRef = useRef(null);
+
+  // --- N8N CHATBOT INTEGRATION (UPDATED UI) ---
+  useEffect(() => {
+    // 1. Inject Styles for Floating Widget (Base Styles)
+    if (!document.getElementById("n8n-chat-style")) {
+      const link = document.createElement("link");
+      link.id = "n8n-chat-style";
+      link.href = "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css";
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+
+    // 2. Inject Custom CSS for Font Size & Separation
+    if (!document.getElementById("n8n-chat-custom-css")) {
+      const style = document.createElement("style");
+      style.id = "n8n-chat-custom-css";
+      style.innerHTML = `
+        :root {
+          --chat--font-size: 13px !important;
+          --chat--message--font-size: 13px !important;
+          --chat--input--font-size: 13px !important;
+          --chat--header--title--font-size: 15px !important;
+          --chat--window--width: 380px;
+        }
+        .n8n-chat-widget {
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // 3. Inject Script for Floating Widget with Custom UI Config
+    if (!document.getElementById("n8n-chat-script")) {
+      const script = document.createElement("script");
+      script.id = "n8n-chat-script";
+      script.type = "module";
+      script.innerHTML = `
+        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+        
+        createChat({
+          webhookUrl: 'https://aryaa2525.app.n8n.cloud/webhook/55d1251c-a027-43a2-ab26-ddfa93b742fd/chat',
+          showWelcomeScreen: false,
+          initialMessages: [
+            'Hi there!',
+            'How can I help you?'
+          ],
+          i18n: {
+            en: {
+              title: 'Chatbot',
+              subtitle: '',
+              getStarted: 'New Conversation',
+              inputPlaceholder: 'Type your message...',
+            }
+          },
+          style: {
+            accentColor: '#155dfc', // Updated Icon/Button Color
+            background: '#ffffff', // Distinct White Background
+            color: '#1e293b',
+          }
+        });
+      `;
+      document.body.appendChild(script);
+    }
+
+    // 4. Toggle Visibility based on Route
+    const styleId = "n8n-chat-toggle-style";
+    let styleTag = document.getElementById(styleId);
+
+    if (location.pathname === "/chatbot") {
+      if (!styleTag) {
+        styleTag = document.createElement("style");
+        styleTag.id = styleId;
+        styleTag.innerHTML = `
+          .n8n-chat { display: none !important; }
+        `;
+        document.head.appendChild(styleTag);
+      }
+    } else {
+      if (styleTag) {
+        styleTag.remove();
+      }
+    }
+
+  }, [location.pathname]);
 
   // Close quick menu when clicking outside
   useEffect(() => {

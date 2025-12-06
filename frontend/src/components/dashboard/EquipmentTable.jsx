@@ -171,9 +171,9 @@ export default function EquipmentTable({
                 <td className="px-4 py-4">
                   <div className="text-sm">
                     <div className="text-gray-900">{item.lab?.name || "N/A"}</div>
-                    <div className="text-gray-500 text-xs">
+                    {/* <div className="text-gray-500 text-xs">
                       {getInstituteName(item.lab?.institute)}
-                    </div>
+                    </div> */}
                   </div>
                 </td>
 
@@ -205,7 +205,7 @@ export default function EquipmentTable({
                         healthScore
                       )}`}
                     >
-                      {healthScore}%
+                      {Number(healthScore).toFixed(2)}%
                     </span>
                   </div>
                 </td>
