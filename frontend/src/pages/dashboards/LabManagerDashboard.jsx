@@ -1,4 +1,4 @@
-// frontend/src/pages/dashboards/LabManagerDashboard.jsx - WITH MARK MAINTENANCE
+// frontend/src/pages/dashboards/LabManagerDashboard.jsx
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useDashboardStore } from "../../stores/dashboardStore";
@@ -18,7 +18,7 @@ import BreakdownAlertModal from "../../components/breakdown/BreakdownAlertModal"
 import {
   FaChartLine, FaExclamationTriangle, FaWrench, FaArrowUp, FaBuilding,
   FaDownload, FaSearch, FaCheckCircle, FaChevronDown, FaClock,
-  FaUserCheck, FaCheck, FaTimes, FaExternalLinkAlt
+  FaUserCheck, FaCheck, FaTimes, FaExternalLinkAlt, FaPlus
 } from "react-icons/fa";
 import { ImLab } from "react-icons/im";
 
@@ -138,7 +138,9 @@ const CompactHistoryList = ({ alerts, loading }) => {
 
 export default function LabManagerDashboard() {
   const navigate = useNavigate();
-  const { triggerEquipmentModal, triggerBreakdownModal } = useOutletContext() || {};
+  // Get triggerMaintenanceModal from Outlet Context (Sidebar + Button)
+  const { triggerEquipmentModal, triggerBreakdownModal, triggerMaintenanceModal } = useOutletContext() || {};
+  
   const { user, checkAuth } = useAuthStore();
   const { overview, fetchOverview, isLoading: dashboardLoading } = useDashboardStore();
   const {
@@ -176,13 +178,15 @@ export default function LabManagerDashboard() {
   const [historyAlerts, setHistoryAlerts] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  // NEW: Mark Maintenance Modal State
+  // Mark Maintenance Modal State
   const [isMarkMaintenanceModalOpen, setIsMarkMaintenanceModalOpen] = useState(false);
   const [equipmentToMaintain, setEquipmentToMaintain] = useState(null);
 
   const prevEqTrigger = useRef(triggerEquipmentModal || 0);
   const prevBdTrigger = useRef(triggerBreakdownModal || 0);
+  const prevMaintTrigger = useRef(triggerMaintenanceModal || 0);
 
+  // Listener for Sidebar "Add Equipment"
   useEffect(() => {
     if ((triggerEquipmentModal || 0) > prevEqTrigger.current) {
       setEditingEquipment(null);
@@ -191,12 +195,22 @@ export default function LabManagerDashboard() {
     }
   }, [triggerEquipmentModal]);
 
+  // Listener for Sidebar "Report Breakdown"
   useEffect(() => {
     if ((triggerBreakdownModal || 0) > prevBdTrigger.current) {
       setIsAddBreakdownModalOpen(true);
       prevBdTrigger.current = triggerBreakdownModal;
     }
   }, [triggerBreakdownModal]);
+
+  // Listener for Sidebar "Log Maintenance" (+ button)
+  useEffect(() => {
+    if ((triggerMaintenanceModal || 0) > prevMaintTrigger.current) {
+      setEquipmentToMaintain(null); // No specific equipment selected
+      setIsMarkMaintenanceModalOpen(true);
+      prevMaintTrigger.current = triggerMaintenanceModal;
+    }
+  }, [triggerMaintenanceModal]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -353,7 +367,7 @@ export default function LabManagerDashboard() {
     }
   };
 
-  // NEW: Mark Maintenance Handlers
+  // Mark Maintenance Handlers
   const handleMarkMaintenanceClick = (equipment) => {
     setEquipmentToMaintain(equipment);
     setIsMarkMaintenanceModalOpen(true);
@@ -573,13 +587,26 @@ export default function LabManagerDashboard() {
             </div>
 
             <div className="flex items-center gap-3 flex-1 justify-end">
-              <div className="relative max-w-[240px] w-full">
+              
+              {/* Log Maintenance Button - Added here as well for visibility */}
+              <button
+                 onClick={() => {
+                   setEquipmentToMaintain(null);
+                   setIsMarkMaintenanceModalOpen(true);
+                 }}
+                 className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-xs font-semibold hover:bg-orange-100 transition-colors"
+              >
+                <FaWrench className="w-3 h-3" />
+                Log Maintenance
+              </button>
+
+              <div className="relative max-w-[200px] w-full">
                 <FaSearch className="absolute left-3 top-2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search equipment..."
+                  placeholder="Search..."
                   className="w-full pl-9 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
                 />
               </div>
@@ -587,7 +614,7 @@ export default function LabManagerDashboard() {
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50 max-w-[140px]"
+                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50 max-w-[120px]"
               >
                 <option value="all">All Status</option>
                 <option value="OPERATIONAL">Operational</option>
@@ -702,7 +729,7 @@ export default function LabManagerDashboard() {
         </div>
       </div>
 
-      {/* MODALS - FIXED: Added inline style wrapper for Equipment Modal */}
+      {/* MODALS */}
       {breakdownAlertToRespond && (
         <ModalWrapper onClose={() => setBreakdownAlertToRespond(null)}>
           <BreakdownAlertModal
@@ -734,7 +761,7 @@ export default function LabManagerDashboard() {
         </ModalWrapper>
       )}
 
-      {/* FIXED: Equipment Modal with inline style override */}
+      {/* Equipment Modal */}
       {isModalOpen && (
         <ModalWrapper onClose={handleModalClose}>
           <div
@@ -752,6 +779,28 @@ export default function LabManagerDashboard() {
                 editingEquipment ? handleUpdateEquipment : handleCreateEquipment
               }
               equipment={editingEquipment}
+            />
+          </div>
+        </ModalWrapper>
+      )}
+
+      {/* Mark Maintenance Modal */}
+      {isMarkMaintenanceModalOpen && (
+        <ModalWrapper onClose={() => setIsMarkMaintenanceModalOpen(false)}>
+          <div
+            style={{
+              position: "relative",
+              background: "transparent",
+              zIndex: "auto",
+              width: "100%",
+            }}
+          >
+            <MarkMaintenanceModal
+              isOpen={isMarkMaintenanceModalOpen}
+              onClose={() => setIsMarkMaintenanceModalOpen(false)}
+              equipment={equipmentToMaintain}
+              allEquipment={equipment} // Pass full list for dropdown
+              onSuccess={handleMarkMaintenanceSuccess}
             />
           </div>
         </ModalWrapper>

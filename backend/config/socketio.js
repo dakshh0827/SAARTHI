@@ -1,3 +1,4 @@
+// backend/config/socketio.js - VERIFIED COMPLETE VERSION
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import logger from '../utils/logger.js';
@@ -39,7 +40,8 @@ const initializeSocketIO = (server) => {
 
   // Connection handler
   io.on(SOCKET_EVENTS.CONNECTION, (socket) => {
-    logger.info(`Client connected: ${socket.id} (User: ${socket.userId})`);
+    logger.info(`✅ Client connected: ${socket.id} (User: ${socket.userId})`);
+    logger.info(`📊 Total connected clients: ${io.sockets.sockets.size}`);
 
     // Join user-specific room
     socket.join(`user:${socket.userId}`);
@@ -61,7 +63,8 @@ const initializeSocketIO = (server) => {
 
     // Disconnect handler
     socket.on(SOCKET_EVENTS.DISCONNECT, () => {
-      logger.info(`Client disconnected: ${socket.id}`);
+      logger.info(`❌ Client disconnected: ${socket.id}`);
+      logger.info(`📊 Remaining connected clients: ${io.sockets.sockets.size}`);
     });
 
     // Error handler
@@ -75,47 +78,24 @@ const initializeSocketIO = (server) => {
 
 // --- Emitter Functions ---
 
-/**
- * Emits an event to a specific user.
- * @param {string} userId - The user's ID.
- * @param {string} event - The event name.
- * @param {any} data - The data to send.
- */
 const emitToUser = (userId, event, data) => {
   if (io) {
     io.to(`user:${userId}`).emit(event, data);
   }
 };
 
-/**
- * Emits an event to all users with a specific role.
- * @param {string} role - The user role (e.g., 'POLICY_MAKER').
- * @param {string} event - The event name.
- * @param {any} data - The data to send.
- */
 const emitToRole = (role, event, data) => {
   if (io) {
     io.to(`role:${role}`).emit(event, data);
   }
 };
 
-/**
- * Emits an event to all users subscribed to an equipment room.
- * @param {string} equipmentId - The equipment's ID.
- * @param {string} event - The event name.
- * @param {any} data - The data to send.
- */
 const emitToEquipment = (equipmentId, event, data) => {
   if (io) {
     io.to(`equipment:${equipmentId}`).emit(event, data);
   }
 };
 
-/**
- * Emits an event to all connected clients.
- * @param {string} event - The event name.
- * @param {any} data - The data to send.
- */
 const emitToAll = (event, data) => {
   if (io) {
     io.emit(event, data);
@@ -125,28 +105,43 @@ const emitToAll = (event, data) => {
 // --- Specific Broadcasters ---
 
 /**
- * Broadcasts an equipment status update.
+ * Broadcasts an equipment status update - CRITICAL FOR REAL-TIME
  * @param {string} equipmentId - The equipment's internal ID.
  * @param {object} status - The new status object.
  */
 const broadcastEquipmentStatus = (equipmentId, status) => {
-  emitToEquipment(equipmentId, SOCKET_EVENTS.EQUIPMENT_STATUS, status);
-  emitToAll(SOCKET_EVENTS.EQUIPMENT_STATUS_UPDATE, { equipmentId, status });
+  if (!io) {
+    logger.error('❌ Cannot broadcast: Socket.IO not initialized!');
+    return;
+  }
+
+  const connectedClients = io.sockets.sockets.size;
+  
+  logger.info('🔊 Broadcasting equipment status:', {
+    equipmentId,
+    temperature: status.temperature,
+    vibration: status.vibration,
+    energyConsumption: status.energyConsumption,
+    connectedClients
+  });
+
+  // Emit to equipment-specific room
+  io.to(`equipment:${equipmentId}`).emit(SOCKET_EVENTS.EQUIPMENT_STATUS, status);
+  
+  // 🚀 CRITICAL: Emit to ALL connected clients for real-time updates
+  io.emit(SOCKET_EVENTS.EQUIPMENT_STATUS_UPDATE, { 
+    equipmentId, 
+    status,
+    timestamp: new Date().toISOString()
+  });
+  
+  logger.info(`✅ Broadcast complete to ${connectedClients} clients`);
 };
 
-/**
- * Broadcasts a new alert to all users.
- * @param {object} alert - The new alert object.
- */
 const broadcastAlert = (alert) => {
   emitToAll(SOCKET_EVENTS.ALERT_NEW, alert);
 };
 
-/**
- * Broadcasts a new notification to a specific user.
- * @param {string} userId - The user's ID.
- * @param {object} notification - The new notification object.
- */
 const broadcastNotification = (userId, notification) => {
   emitToUser(userId, SOCKET_EVENTS.NOTIFICATION_NEW, notification);
 };

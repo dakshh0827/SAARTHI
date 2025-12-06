@@ -1,18 +1,20 @@
-// frontend/src/pages/dashboards/LabAnalyticsPage.jsx - COMPLETE IMPLEMENTATION
-import { useEffect, useState } from "react";
+// frontend/src/pages/dashboards/LabAnalyticsPage.jsx
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import io from "socket.io-client";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  ArrowLeft, LineChart as LineChartIcon, Box, Clock, BarChart3,
-  PieChart as PieChartIcon, Wrench, Building, Award, AlertCircle,
-  ShieldCheck, TrendingUp, TrendingDown, Activity
+  ArrowLeft, Box, Clock, BarChart3, PieChart as PieChartIcon, 
+  Wrench, Building, Award, AlertCircle, ShieldCheck, 
+  TrendingUp, TrendingDown, Activity, Wifi, WifiOff
 } from "lucide-react";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import api from "../../lib/axios";
 
+// --- CONSTANTS ---
 const STATUS_COLORS = {
   "OPERATIONAL": "#10B981",
   "IN USE": "#3B82F6",
@@ -26,6 +28,7 @@ const STATUS_COLORS = {
 
 const FALLBACK_COLORS = ["#8B5CF6", "#EC4899", "#14B8A6", "#6366F1", "#84CC16", "#06B6D4"];
 
+// --- HELPER FUNCTIONS ---
 const getISOStandard = (department) => {
   if (!department) return null;
   const dept = department.toLowerCase();
@@ -37,10 +40,10 @@ const getISOStandard = (department) => {
   return null;
 };
 
-// Predictive Maintenance Card Component
+// --- SUB-COMPONENTS ---
+
 const PredictiveMaintenanceCard = ({ equipment, prediction }) => {
   if (!prediction) return null;
-
   const probability = prediction.probability || 0;
   const daysUntil = prediction.daysUntilMaintenance || 0;
   const needsMaintenance = prediction.prediction === 1;
@@ -67,7 +70,7 @@ const PredictiveMaintenanceCard = ({ equipment, prediction }) => {
     <div className={`p-4 rounded-xl border ${priorityBg} shadow-sm`}>
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
-          <h4 className="font-semibold text-gray-900 text-sm">{equipment.name}</h4>
+          <h4 className="font-semibold text-gray-900 text-sm truncate pr-2">{equipment?.name || "Unknown Equipment"}</h4>
           <div className="flex items-center gap-2 mt-1">
             <span className={`text-xs font-bold text-${priorityColor}-700`}>
               Failure Prob: {probability.toFixed(1)}%
@@ -78,21 +81,13 @@ const PredictiveMaintenanceCard = ({ equipment, prediction }) => {
           {priority}
         </span>
       </div>
-
       <div className="mt-2 pt-2 border-t border-black/5">
         <div className="flex items-start gap-1.5 mb-1">
           <AlertCircle className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-gray-600">
-            {needsMaintenance 
-              ? `Maintenance needed in ${daysUntil} days` 
-              : `Next maintenance in ~${daysUntil} days`}
+            {needsMaintenance ? `Maintenance needed in ${daysUntil} days` : `Next maintenance in ~${daysUntil} days`}
           </p>
         </div>
-        {prediction.daysSinceMaintenance !== undefined && (
-          <p className="text-xs text-gray-500 mt-1">
-            Last maintained {prediction.daysSinceMaintenance} days ago
-          </p>
-        )}
       </div>
     </div>
   );
@@ -102,27 +97,182 @@ export default function LabAnalyticsPage() {
   const { labId } = useParams();
   const navigate = useNavigate();
 
+  // --- STATE ---
   const [labData, setLabData] = useState(null);
   const [predictiveData, setPredictiveData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Socket State
+  const [socket, setSocket] = useState(null);
+  const [liveUpdates, setLiveUpdates] = useState({});
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
 
+  // --- SOCKET.IO CONNECTION (ROBUST VERSION) ---
+  useEffect(() => {
+    console.log('🔌 Setting up Socket.IO connection...');
+
+    // 1. Robust Token Retrieval
+    let token = null;
+    try {
+      const authStorage = localStorage.getItem('auth-storage');
+      if (authStorage) {
+        const parsed = JSON.parse(authStorage);
+        token = parsed?.state?.accessToken;
+      }
+    } catch (e) {
+      console.error('❌ Failed to parse auth token:', e);
+    }
+
+    if (!token) {
+      console.error('❌ No access token found in localStorage');
+      return;
+    }
+
+    // 2. URL Config
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const socketUrl = apiUrl.replace('/api', '');
+    
+    // 3. Initialize Socket
+    const socketInstance = io(socketUrl, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    // 4. Connection Handlers
+    socketInstance.on('connect', () => {
+      console.log('✅ Socket.IO connected!', socketInstance.id);
+      setIsSocketConnected(true);
+    });
+
+    socketInstance.on('disconnect', (reason) => {
+      console.log('❌ Socket.IO disconnected:', reason);
+      setIsSocketConnected(false);
+    });
+
+    socketInstance.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error.message);
+      setIsSocketConnected(false);
+    });
+
+    // 5. Data Event Listeners (Handling both event types)
+    socketInstance.on('equipment:status', (data) => {
+      console.log('📡 [equipment:status] Received update:', data);
+      handleEquipmentUpdate(data);
+    });
+
+    socketInstance.on('equipment:status:update', (data) => {
+      console.log('📡 [equipment:status:update] Received update:', data);
+      // This event might send { equipmentId, status: { ... } } or flattened
+      handleEquipmentUpdate(data.status || data);
+    });
+
+    // Debug listener
+    socketInstance.onAny((eventName, ...args) => {
+      if (!eventName.includes('equipment')) {
+        console.log('📡 Socket event:', eventName);
+      }
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      console.log('🔌 Cleaning up Socket.IO connection');
+      socketInstance.removeAllListeners();
+      socketInstance.disconnect();
+    };
+  }, []);
+
+  // --- HANDLE LIVE UPDATES ---
+  const handleEquipmentUpdate = (data) => {
+    const equipmentId = data.equipmentId || data.id; // Handle varied payload structures
+    
+    if (!equipmentId) {
+      console.warn('⚠️ No equipmentId in update data', data);
+      return;
+    }
+
+    // 1. Update Live Indicator State
+    setLiveUpdates((prev) => ({
+      ...prev,
+      [equipmentId]: {
+        temperature: data.temperature,
+        vibration: data.vibration,
+        energyConsumption: data.energyConsumption,
+        updatedAt: new Date(),
+      },
+    }));
+
+    // 2. Update Lab Data & Recalculate Stats
+    setLabData((prevLabData) => {
+      if (!prevLabData || !prevLabData.equipment) return prevLabData;
+
+      let updatedEquipmentList = prevLabData.equipment.map((eq) => {
+        if (eq.id === equipmentId) {
+          // Merge new data into existing equipment object
+          return {
+            ...eq,
+            status: {
+              ...eq.status,
+              status: data.status || eq.status?.status,
+              healthScore: data.healthScore !== undefined ? data.healthScore : eq.status?.healthScore,
+              // Update status sensor values if present
+              temperature: data.temperature ?? eq.status?.temperature,
+              vibration: data.vibration ?? eq.status?.vibration,
+              energyConsumption: data.energyConsumption ?? eq.status?.energyConsumption,
+            },
+            analyticsParams: {
+              ...eq.analyticsParams,
+              // Update analytics sensor values
+              temperature: data.temperature ?? eq.analyticsParams?.temperature,
+              vibration: data.vibration ?? eq.analyticsParams?.vibration,
+              energyConsumption: data.energyConsumption ?? eq.analyticsParams?.energyConsumption,
+              efficiency: data.efficiency ?? eq.analyticsParams?.efficiency,
+            }
+          };
+        }
+        return eq;
+      });
+
+      // Recalculate Global Stats (e.g. Avg Health) for the top cards
+      const totalEquipment = updatedEquipmentList.length;
+      const avgHealthScore = updatedEquipmentList.reduce((sum, eq) => sum + (eq.status?.healthScore || 0), 0) / (totalEquipment || 1);
+
+      return {
+        ...prevLabData,
+        equipment: updatedEquipmentList,
+        statistics: {
+          ...prevLabData.statistics,
+          avgHealthScore: avgHealthScore
+        }
+      };
+    });
+  };
+
+  // --- INITIAL DATA FETCH ---
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       
       try {
-        // Fetch lab analytics
+        console.log(`📊 Fetching lab analytics for: ${labId}`);
         const analyticsResponse = await api.get(`/monitoring/lab-analytics/${labId}`);
         setLabData(analyticsResponse.data.data);
 
-        // Fetch predictive maintenance data
-        const predictiveResponse = await api.get(`/analytics/predictive/${labId}`);
-        setPredictiveData(predictiveResponse.data.data || []);
+        // Fetch predictive data separately if needed
+        try {
+          const predictiveResponse = await api.get(`/analytics/predictive/${labId}`);
+          setPredictiveData(predictiveResponse.data.data || []);
+        } catch (predErr) {
+          console.warn("Predictive data fetch failed (non-critical):", predErr);
+        }
 
       } catch (err) {
-        console.error("Failed to fetch lab analytics:", err);
+        console.error("❌ Failed to fetch lab analytics:", err);
         setError(err.response?.data?.message || "Failed to load lab analytics");
       } finally {
         setIsLoading(false);
@@ -134,7 +284,26 @@ export default function LabAnalyticsPage() {
     }
   }, [labId]);
 
-  const prepareChartData = () => {
+  // --- LIVE INDICATOR COMPONENT ---
+  const LiveIndicator = ({ equipmentId }) => {
+    const update = liveUpdates[equipmentId];
+    if (!update) return null;
+
+    const secondsAgo = Math.floor((new Date() - update.updatedAt) / 1000);
+    const isLive = secondsAgo < 10;
+
+    return (
+      <div className="flex items-center gap-2 ml-2">
+        <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+        <span className={`text-[10px] font-bold ${isLive ? 'text-green-600' : 'text-gray-500'}`}>
+          {isLive ? 'LIVE' : `${secondsAgo}s ago`}
+        </span>
+      </div>
+    );
+  };
+
+  // --- CHART DATA PREPARATION ---
+  const chartData = useMemo(() => {
     if (!labData || !labData.equipment) return null;
 
     const equipment = labData.equipment;
@@ -153,79 +322,55 @@ export default function LabAnalyticsPage() {
       value: count,
     }));
 
-    // Health Score Data
-    const healthScoreData = equipment.slice(0, 10).map((eq) => ({
-      name: eq.name.substring(0, 20) + (eq.name.length > 20 ? "..." : ""),
+    // Health Score
+    const healthScoreData = equipment.map((eq) => ({
+      name: eq.name,
+      shortName: eq.name.substring(0, 15) + (eq.name.length > 15 ? "..." : ""),
       healthScore: eq.status?.healthScore || 0,
       efficiency: eq.analyticsParams?.efficiency || 0,
     }));
 
-    // Temperature Trend (Last 24 hours from sensor data)
-    const tempData = equipment
-      .filter(eq => eq.analyticsParams?.temperature)
-      .slice(0, 8)
-      .map(eq => ({
-        name: eq.name.substring(0, 15),
+    // Analytics Params
+    const tempData = equipment.filter(eq => eq.analyticsParams?.temperature !== undefined).map(eq => ({
+        name: eq.name,
+        shortName: eq.name.substring(0, 10),
         temperature: eq.analyticsParams.temperature
-      }));
+    }));
 
-    // Vibration & Energy Data
-    const vibrationData = equipment
-      .filter(eq => eq.analyticsParams?.vibration)
-      .slice(0, 8)
-      .map(eq => ({
-        name: eq.name.substring(0, 15),
+    const vibrationData = equipment.filter(eq => eq.analyticsParams?.vibration !== undefined).map(eq => ({
+        name: eq.name,
+        shortName: eq.name.substring(0, 10),
         vibration: eq.analyticsParams.vibration
-      }));
+    }));
 
-    const energyData = equipment
-      .filter(eq => eq.analyticsParams?.energyConsumption)
-      .slice(0, 8)
-      .map(eq => ({
-        name: eq.name.substring(0, 15),
+    const energyData = equipment.filter(eq => eq.analyticsParams?.energyConsumption !== undefined).map(eq => ({
+        name: eq.name,
+        shortName: eq.name.substring(0, 10),
         energy: eq.analyticsParams.energyConsumption
-      }));
+    }));
 
     return { statusChartData, healthScoreData, tempData, vibrationData, energyData };
-  };
+  }, [labData]); 
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <LoadingSpinner size="lg" />
+  // --- RENDER ---
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><LoadingSpinner size="lg" /></div>;
+  
+  if (error) return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-200">
+      <div className="text-center">
+        <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Analytics</h2>
+        <p className="text-gray-600 mb-4">{error}</p>
+        <button onClick={() => navigate("/dashboard")} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Return to Dashboard</button>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-200">
-        <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Analytics</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Return to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!labData) return <div className="flex items-center justify-center min-h-screen bg-gray-50"><p className="text-gray-600">No data available.</p></div>;
 
-  if (!labData) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <p className="text-gray-600">No data available for this lab.</p>
-      </div>
-    );
-  }
-
-  const chartData = prepareChartData();
   const isoStandard = getISOStandard(labData.lab?.department);
   const stats = labData.statistics || {};
+  const getChartWidth = (count) => Math.max(100, count * 60);
 
   return (
     <div className="min-h-screen bg-gray-200 flex flex-col">
@@ -237,19 +382,30 @@ export default function LabAnalyticsPage() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                {labData.lab?.name || "Lab Analytics"}
-                {isoStandard && (
-                  <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold tracking-wide">
-                    <Award className="w-3 h-3" /> {isoStandard}
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">{labData.lab?.name || "Lab Analytics"}</h1>
+                {/* Connection Badge */}
+                {isSocketConnected ? (
+                   <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full flex items-center gap-1.5 border border-green-200">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Real-time Active
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-full flex items-center gap-1.5 border border-gray-200">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                    Connecting...
                   </span>
                 )}
-              </h1>
+              </div>
               <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
                 <Building className="w-3 h-3" />
                 <span>{labData.lab?.institute?.name}</span>
-                <span className="text-gray-300">•</span>
-                <span>{labData.lab?.department?.replace(/_/g, " ")}</span>
+                {isoStandard && (
+                  <>
+                    <span className="text-gray-300">•</span>
+                    <span className="flex items-center gap-1 text-blue-600 font-medium"><Award className="w-3 h-3" /> {isoStandard}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -266,30 +422,28 @@ export default function LabAnalyticsPage() {
           <StatCard icon={Clock} title="Active Now" value={stats.inClassEquipment || 0} color="text-purple-600" />
         </div>
 
-        {/* Predictive Maintenance Section */}
+        {/* Predictive Maintenance - Scrollable */}
         {predictiveData && predictiveData.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
-                <Wrench className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">AI Predictive Maintenance Forecast</h3>
-                <p className="text-sm text-gray-500">Real-time failure probability based on live sensor telemetry.</p>
-              </div>
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg text-purple-600"><Wrench className="w-5 h-5" /></div>
+                  <div>
+                      <h3 className="text-lg font-bold text-gray-900">AI Predictive Forecast</h3>
+                      <p className="text-sm text-gray-500">Real-time failure probability.</p>
+                  </div>
+                </div>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {predictiveData
-                .sort((a, b) => (b.prediction?.probability || 0) - (a.prediction?.probability || 0))
-                .slice(0, 6)
-                .map((item) => (
-                  <PredictiveMaintenanceCard
-                    key={item.id}
-                    equipment={labData.equipment.find(eq => eq.id === item.id)}
-                    prediction={item.prediction}
-                  />
+            <div className="max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {predictiveData.map((item) => (
+                    <PredictiveMaintenanceCard
+                        key={item.id}
+                        equipment={labData.equipment?.find(eq => eq.id === item.id)}
+                        prediction={item.prediction}
+                    />
                 ))}
+                </div>
             </div>
           </div>
         )}
@@ -297,25 +451,21 @@ export default function LabAnalyticsPage() {
         {/* Charts Section */}
         {chartData && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Status Pie Chart */}
+            {/* Pie Chart */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <PieChartIcon className="text-blue-500 w-5 h-5"/> Equipment Status
+                <PieChartIcon className="text-blue-500 w-5 h-5"/> Status
               </h3>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={chartData.statusChartData}
-                      cx="50%" cy="45%"
-                      startAngle={90} endAngle={-270}
-                      outerRadius={80}
-                      labelLine={false}
+                      data={chartData.statusChartData} cx="50%" cy="45%" startAngle={90} endAngle={-270}
+                      outerRadius={80} labelLine={false} dataKey="value"
                       label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      dataKey="value"
                     >
                       {chartData.statusChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.rawStatus] || FALLBACK_COLORS[index % FALLBACK_COLORS.length]} />
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.rawStatus] || FALLBACK_COLORS[index]} />
                       ))}
                     </Pie>
                     <Tooltip />
@@ -325,82 +475,100 @@ export default function LabAnalyticsPage() {
               </div>
             </div>
 
-            {/* Health Score Bar Chart */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-2">
+            {/* Health Chart - Horizontal Scroll */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-2 flex flex-col">
               <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <BarChart3 className="text-green-500 w-5 h-5"/> Health Score & Efficiency
+                <BarChart3 className="text-green-500 w-5 h-5"/> Health & Efficiency
               </h3>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData.healthScoreData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis dataKey="name" angle={-20} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="healthScore" fill="#10B981" name="Health Score" />
-                    <Bar dataKey="efficiency" fill="#3B82F6" name="Efficiency %" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-[300px] overflow-x-auto overflow-y-hidden custom-scrollbar">
+                <div style={{ width: `${getChartWidth(chartData.healthScoreData.length)}%`, minWidth: '100%', height: '100%' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData.healthScoreData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                        <XAxis dataKey="shortName" angle={-20} textAnchor="end" height={60} tick={{ fontSize: 11 }} interval={0} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip />
+                        <Bar dataKey="healthScore" fill="#10B981" name="Health Score" />
+                        <Bar dataKey="efficiency" fill="#3B82F6" name="Efficiency %" />
+                    </BarChart>
+                    </ResponsiveContainer>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Additional Charts: Temperature, Vibration, Energy */}
+        {/* Sensor Charts */}
         {chartData && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Temperature Chart */}
             <ChartCard title="Temperature (°C)" data={chartData.tempData} dataKey="temperature" color="#F59E0B" />
-            
-            {/* Vibration Chart */}
             <ChartCard title="Vibration (mm/s)" data={chartData.vibrationData} dataKey="vibration" color="#8B5CF6" />
-            
-            {/* Energy Consumption Chart */}
             <ChartCard title="Energy (W)" data={chartData.energyData} dataKey="energy" color="#10B981" />
           </div>
         )}
 
-        {/* Equipment Table */}
+        {/* Live Equipment Table */}
         {labData.equipment && labData.equipment.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">Equipment Detail View</h3>
+              {Object.keys(liveUpdates).length > 0 && (
+                <span className="text-xs text-green-600 flex items-center gap-1 font-bold animate-pulse">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  {Object.keys(liveUpdates).length} devices transmitting
+                </span>
+              )}
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Equipment</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Health</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Temp (°C)</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vibration</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Energy (W)</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Equipment</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Health</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Temp</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Vib</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase bg-gray-50">Energy</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {labData.equipment.map((eq) => (
-                    <tr key={eq.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{eq.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2.5 py-1 inline-flex text-xs leading-4 font-semibold rounded-full bg-gray-100 text-gray-800">
-                          {eq.status?.status || "OFFLINE"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {(eq.status?.healthScore || 0).toFixed(0)}%
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {eq.analyticsParams?.temperature?.toFixed(1) || "N/A"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {eq.analyticsParams?.vibration?.toFixed(2) || "N/A"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {eq.analyticsParams?.energyConsumption?.toFixed(0) || "N/A"}
-                      </td>
-                    </tr>
-                  ))}
+                  {labData.equipment.map((eq) => {
+                    const hasLiveData = liveUpdates[eq.id];
+                    return (
+                      <tr key={eq.id} className={`hover:bg-gray-50 transition-colors ${hasLiveData ? 'bg-green-50/40' : ''}`}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                                <span className="text-sm font-medium text-gray-900">{eq.name}</span>
+                                <LiveIndicator equipmentId={eq.id} />
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="px-2.5 py-1 inline-flex text-xs leading-4 font-semibold rounded-full bg-gray-100 text-gray-800">
+                            {eq.status?.status || "OFFLINE"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {(eq.status?.healthScore || 0).toFixed(0)}%
+                        </td>
+                        {/* Live Data Cells */}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <span className={hasLiveData ? 'font-bold text-green-700' : ''}>
+                                {eq.analyticsParams?.temperature?.toFixed(1) || "N/A"}
+                            </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <span className={hasLiveData ? 'font-bold text-green-700' : ''}>
+                                {eq.analyticsParams?.vibration?.toFixed(2) || "N/A"}
+                            </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <span className={hasLiveData ? 'font-bold text-green-700' : ''}>
+                                {eq.analyticsParams?.energyConsumption?.toFixed(0) || "N/A"}
+                            </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -422,21 +590,26 @@ const StatCard = ({ icon: Icon, title, value, color = "text-blue-600" }) => (
   </div>
 );
 
-const ChartCard = ({ title, data, dataKey, color }) => (
-  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-    <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
-      <Activity className="w-5 h-5" style={{ color }} /> {title}
-    </h3>
-    <div className="h-[250px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-          <XAxis dataKey="name" angle={-20} textAnchor="end" height={60} tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip />
-          <Bar dataKey={dataKey} fill={color} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-);
+const ChartCard = ({ title, data, dataKey, color }) => {
+    const dynamicWidth = Math.max(100, (data?.length || 0) * 12); 
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col">
+        <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5" style={{ color }} /> {title}
+        </h3>
+        <div className="h-[250px] overflow-x-auto overflow-y-hidden custom-scrollbar">
+          <div style={{ width: `${dynamicWidth}%`, minWidth: '100%', height: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="shortName" angle={-20} textAnchor="end" height={60} tick={{ fontSize: 10 }} interval={0} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey={dataKey} fill={color} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    );
+};
